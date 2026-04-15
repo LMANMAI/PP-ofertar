@@ -1,0 +1,141 @@
+name: Backport to develop
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  backport:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Determine base branch
+        id: base
+        run: |
+          if git ls-remote --exit-code --heads origin develop; then
+            echo "branch=develop" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=master" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create backport branch
+        id: create_branch
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE: ${{ steps.base.outputs.branch }}
+        run: |
+          BACKPORT_BRANCH="backport/${PR_NUMBER}-to-${BASE}"
+          git fetch origin "$BASE"
+          git checkout -b "$BACKPORT_BRANCH" "origin/$BASE"
+          echo "backport_branch=$BACKPORT_BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Detect merge type and cherry-pick
+        id: cherry_pick
+        env:
+          MERGE_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          PARENT_COUNT=$(git cat-file -p "$MERGE_COMMIT_SHA" | grep -c "^parent ")
+          echo "Parent count: $PARENT_COUNT"
+
+          pushed=false
+          had_conflict=false
+
+          if [ "$PARENT_COUNT" -ge 2 ]; then
+            echo "Merge commit detected → cherry-pick -m 1"
+            git cherry-pick -m 1 "$MERGE_COMMIT_SHA" && pushed=true || had_conflict=true
+          else
+            echo "Squash/rebase detected → cherry-pick direct"
+            git cherry-pick "$MERGE_COMMIT_SHA" && pushed=true || had_conflict=true
+          fi
+
+          if [ "$had_conflict" = "true" ]; then
+            echo "Conflict detected — resetting .github/workflows/ to avoid GITHUB_TOKEN block"
+            git checkout HEAD -- .github/workflows/ 2>/dev/null || true
+            git add -A
+            git commit -m "chore: backport #${PR_NUMBER} with conflict markers" || true
+            pushed=true
+          fi
+
+          # Check if only .github/workflows/ changed
+          CHANGED=$(git diff "origin/${{ steps.base.outputs.branch }}"...HEAD --name-only 2>/dev/null || true)
+          NON_WORKFLOW=$(echo "$CHANGED" | grep -v '^\.github/workflows/' || true)
+
+          if [ -z "$NON_WORKFLOW" ] && [ -n "$CHANGED" ]; then
+            echo "Only .github/workflows/ changed — nothing to backport"
+            pushed=false
+          fi
+
+          echo "pushed=$pushed" >> "$GITHUB_OUTPUT"
+          echo "had_conflict=$had_conflict" >> "$GITHUB_OUTPUT"
+
+      - name: Push backport branch
+        if: steps.cherry_pick.outputs.pushed == 'true'
+        env:
+          BACKPORT_BRANCH: ${{ steps.create_branch.outputs.backport_branch }}
+        run: |
+          git push origin "$BACKPORT_BRANCH"
+
+      - name: Check for existing PR
+        if: steps.cherry_pick.outputs.pushed == 'true'
+        id: check_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BACKPORT_BRANCH: ${{ steps.create_branch.outputs.backport_branch }}
+          BASE: ${{ steps.base.outputs.branch }}
+        run: |
+          EXISTING=$(gh pr list --head "$BACKPORT_BRANCH" --base "$BASE" --state open --json url --jq '.[0].url' 2>/dev/null || true)
+          if [ -n "$EXISTING" ]; then
+            echo "PR already exists: $EXISTING"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Pull Request
+        if: steps.cherry_pick.outputs.pushed == 'true' && steps.check_pr.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BACKPORT_BRANCH: ${{ steps.create_branch.outputs.backport_branch }}
+          BASE: ${{ steps.base.outputs.branch }}
+          HAD_CONFLICT: ${{ steps.cherry_pick.outputs.had_conflict }}
+        run: |
+          if [ "$HAD_CONFLICT" = "true" ]; then
+            STATUS_ICON="⚠️"
+            STATUS_MSG="Backport applied with conflicts. Review conflict markers before merging."
+          else
+            STATUS_ICON="✅"
+            STATUS_MSG="Backport applied cleanly."
+          fi
+
+          printf '%s\n\n%s\n\nOriginal PR: #%s\nSource branch: main\nTarget branch: %s\n\n---\nGenerated automatically by the backport workflow.' \
+            "${STATUS_ICON} ${STATUS_MSG}" \
+            "Backport of #${PR_NUMBER}" \
+            "${PR_NUMBER}" \
+            "${BASE}" > /tmp/pr_body.txt
+
+          gh pr create \
+            --title "[Backport] ${PR_TITLE}" \
+            --base "$BASE" \
+            --head "$BACKPORT_BRANCH" \
+            --body-file /tmp/pr_body.txt
