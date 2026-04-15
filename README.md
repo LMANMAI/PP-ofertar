@@ -150,3 +150,9 @@ La API quedara disponible en `http://localhost:8080`
 ## Proyecto relacionado
 
 - **Frontend (React Native + Expo):** [LMANMAI/PP-ofertar-fe](https://github.com/LMANMAI/PP-ofertar-fe)
+
+---
+
+## CI/CD
+
+- **Backport automático:** al mergear un PR a `main`, se abre automáticamente un PR de backport hacia `develop`.
