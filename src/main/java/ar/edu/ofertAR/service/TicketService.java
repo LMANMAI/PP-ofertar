@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -49,6 +50,13 @@ public class TicketService {
         log.info("Ticket {} creado para usuario {} — pendiente de OCR", ticket.getId(), user.getEmail());
 
         return toResponse(ticket);
+    }
+
+    public List<TicketResponse> getTicketsByUser(User user) {
+        return ticketRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
+                .stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     private void validateImage(MultipartFile file) {

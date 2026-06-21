@@ -3,6 +3,7 @@ package ar.edu.ofertAR.service;
 import ar.edu.ofertAR.dto.request.LoginRequest;
 import ar.edu.ofertAR.dto.request.RegisterRequest;
 import ar.edu.ofertAR.dto.response.AuthResponse;
+import ar.edu.ofertAR.dto.response.UserProfileResponse;
 import ar.edu.ofertAR.model.User;
 import ar.edu.ofertAR.repository.UserRepository;
 import ar.edu.ofertAR.security.JwtService;
@@ -36,11 +37,7 @@ public class AuthService {
 
         String token = jwtService.generateToken(user);
 
-        return AuthResponse.builder()
-                .token(token)
-                .email(user.getEmail())
-                .name(user.getName())
-                .build();
+        return buildAuthResponse(user, token);
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -53,10 +50,23 @@ public class AuthService {
 
         String token = jwtService.generateToken(user);
 
+        return buildAuthResponse(user, token);
+    }
+
+    private AuthResponse buildAuthResponse(User user, String token) {
+        UserProfileResponse profile = UserProfileResponse.builder()
+                .id(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .profilePicture(user.getProfilePicture())
+                .address(user.getAddress())
+                .phone(user.getPhone())
+                .createdAt(user.getCreatedAt())
+                .build();
+
         return AuthResponse.builder()
                 .token(token)
-                .email(user.getEmail())
-                .name(user.getName())
+                .user(profile)
                 .build();
     }
 }
