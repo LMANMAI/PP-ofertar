@@ -8,6 +8,9 @@ RUN ./gradlew bootJar --no-daemon
 
 FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
+RUN apt-get update && apt-get install -y netcat-openbsd && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/build/libs/*.jar app.jar
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["/entrypoint.sh"]
