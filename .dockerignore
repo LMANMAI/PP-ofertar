@@ -1,0 +1,7 @@
+.gradle/
+build/
+.agents/
+.git/
+bin/
+skills-lock.json
+*.md

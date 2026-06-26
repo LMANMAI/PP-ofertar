@@ -23,4 +23,7 @@ public class RegisterRequest {
     @NotBlank(message = "La contraseña es obligatoria")
     @Size(min = 6, max = 100, message = "La contraseña debe tener entre 6 y 100 caracteres")
     private String password;
+
+    @Size(max = 20)
+    private String phone;
 }

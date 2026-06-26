@@ -5,7 +5,6 @@ HELP.md
 build/
 !**/src/main/**/build/
 !**/src/test/**/build/
-gradle/wrapper/gradle-wrapper.jar
 
 ### Maven (legacy — borrar pom.xml, mvnw, mvnw.cmd, .mvn/) ###
 target/
@@ -39,3 +38,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Skills ###
+.agents
+skills-lock.json
