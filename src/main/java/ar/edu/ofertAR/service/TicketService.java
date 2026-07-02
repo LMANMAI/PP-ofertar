@@ -21,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -101,7 +102,8 @@ public class TicketService {
                             .description(ocrItem.description())
                             .rawDescription(ocrItem.rawDescription())
                             .quantity(ocrItem.quantity())
-                            .unitPrice(ocrItem.price())
+                            .unitPrice(ocrItem.price().divide(
+                                    BigDecimal.valueOf(ocrItem.quantity()), 2, RoundingMode.HALF_UP))
                             .originalPrice(ocrItem.originalPrice())
                             .subtotal(ocrItem.price())
                             .barcode(ocrItem.code())
@@ -243,15 +245,9 @@ public class TicketService {
             }
 
 			ticket.setSubtotal(newSubtotal);
-			BigDecimal newTotal = BigDecimal.ZERO;
-			for (TicketItem item : ticket.getItems()) {
-				BigDecimal lineTotal = item.getSubtotal();
-				if (item.getDiscountAmount() != null
-						&& item.getDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
-					lineTotal = lineTotal.subtract(item.getDiscountAmount());
-				}
-				newTotal = newTotal.add(lineTotal);
-			}
+			BigDecimal newTotal = ticket.getItems().stream()
+					.map(TicketItem::getSubtotal)
+					.reduce(BigDecimal.ZERO, BigDecimal::add);
 			ticket.setTotal(newTotal);
         }
 
