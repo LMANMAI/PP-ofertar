@@ -42,3 +42,9 @@ build/
 ### Skills ###
 .agents
 skills-lock.json
+
+### Environment ###
+.env
+.env.local
+
+.codegraph

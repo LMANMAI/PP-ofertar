@@ -18,7 +18,10 @@ public class TicketResponse {
 
     private Long id;
     private String storeName;
+    private String ticketId;
     private BigDecimal total;
+    private BigDecimal subtotal;
+    private BigDecimal totalDiscounts;
     private TicketStatus status;
     private LocalDateTime createdAt;
     private List<TicketItemResponse> items;

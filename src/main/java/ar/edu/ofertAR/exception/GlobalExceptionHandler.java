@@ -40,6 +40,16 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(OcrException.class)
+    public ResponseEntity<ApiErrorResponse> handleOcrException(OcrException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(
+                ApiErrorResponse.builder()
+                        .status(502)
+                        .message("Error en el servicio de OCR: " + ex.getMessage())
+                        .build()
+        );
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiErrorResponse> handleBadCredentials(BadCredentialsException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(

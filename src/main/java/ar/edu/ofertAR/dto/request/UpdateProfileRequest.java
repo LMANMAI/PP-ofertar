@@ -13,6 +13,7 @@ public class UpdateProfileRequest {
     @Size(min = 2, max = 100, message = "El nombre debe tener entre 2 y 100 caracteres")
     private String name;
 
+    @Size(max = 2_097_152, message = "La imagen es demasiado grande (máx 2MB en base64)")
     private String profilePicture;
 
     @Size(max = 300)

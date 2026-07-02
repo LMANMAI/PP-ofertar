@@ -15,8 +15,13 @@ public class TicketItemResponse {
 
     private Long id;
     private String description;
+    private String rawDescription;
     private Integer quantity;
     private BigDecimal unitPrice;
+    private BigDecimal originalPrice;
     private BigDecimal subtotal;
     private String barcode;
+    private String category;
+    private BigDecimal discountAmount;
+    private String discountDescription;
 }

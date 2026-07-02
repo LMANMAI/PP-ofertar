@@ -4,4 +4,6 @@ build/
 .git/
 bin/
 skills-lock.json
+.env
+.env.local
 *.md

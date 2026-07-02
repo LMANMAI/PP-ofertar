@@ -36,7 +36,9 @@ public class User implements UserDetails {
     @Builder.Default
     private Role role = Role.USER;
 
-    @Column(name = "profile_picture")
+    @Basic(fetch = FetchType.LAZY)
+    @Column(name = "profile_picture", columnDefinition = "LONGTEXT")
+    @ToString.Exclude
     private String profilePicture;
 
     @Column(length = 300)

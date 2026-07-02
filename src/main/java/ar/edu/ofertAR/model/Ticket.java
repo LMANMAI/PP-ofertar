@@ -30,8 +30,17 @@ public class Ticket {
     @Column(name = "store_name", length = 200)
     private String storeName;
 
+    @Column(name = "ticket_id", length = 100)
+    private String ticketId;
+
     @Column(precision = 12, scale = 2)
     private BigDecimal total;
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal subtotal;
+
+    @Column(name = "total_discounts", precision = 12, scale = 2)
+    private BigDecimal totalDiscounts;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

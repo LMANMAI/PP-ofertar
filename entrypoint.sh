@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 DB_HOST="${DB_HOST:-db}"
@@ -9,10 +9,7 @@ RETRY_INTERVAL=2
 echo "Waiting for MySQL at ${DB_HOST}:${DB_PORT}..."
 
 for i in $(seq 1 $MAX_RETRIES); do
-  if nc -z "$DB_HOST" "$DB_PORT" 2>/dev/null; then
-    echo "MySQL is ready!"
-    break
-  fi
+  (echo > /dev/tcp/"$DB_HOST"/"$DB_PORT") 2>/dev/null && { echo "MySQL is ready!"; break; }
   echo "Attempt $i/$MAX_RETRIES — MySQL not ready, waiting ${RETRY_INTERVAL}s..."
   sleep $RETRY_INTERVAL
 done
