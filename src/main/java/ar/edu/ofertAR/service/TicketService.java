@@ -245,10 +245,10 @@ public class TicketService {
             }
 
 			ticket.setSubtotal(newSubtotal);
-			BigDecimal newTotal = ticket.getItems().stream()
-					.map(TicketItem::getSubtotal)
-					.reduce(BigDecimal.ZERO, BigDecimal::add);
-			ticket.setTotal(newTotal);
+			BigDecimal discounts = ticket.getTotalDiscounts() != null
+					? ticket.getTotalDiscounts()
+					: BigDecimal.ZERO;
+			ticket.setTotal(newSubtotal.subtract(discounts));
         }
 
         ticket = ticketRepository.save(ticket);
