@@ -50,4 +50,13 @@ public class TicketController {
     ) {
         return ResponseEntity.ok(ticketService.updateTicket(id, request, user));
     }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+            @PathVariable Long id,
+            @AuthenticationPrincipal User user
+    ) {
+        ticketService.deleteTicket(id, user);
+        return ResponseEntity.noContent().build();
+    }
 }

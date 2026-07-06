@@ -256,6 +256,15 @@ public class TicketService {
         return toResponse(ticket);
     }
 
+    @Transactional
+    public void deleteTicket(Long id, User user) {
+        Ticket ticket = ticketRepository.findByIdAndUserId(id, user.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Ticket no encontrado"));
+        deleteImageFile(ticket.getImagePath());
+        ticketRepository.delete(ticket);
+        log.info("Ticket {} eliminado por el usuario {}", id, user.getEmail());
+    }
+
     private void enforceTicketLimit(User user) {
         List<Ticket> tickets = ticketRepository.findByUserIdOrderByCreatedAtAsc(user.getId());
         while (tickets.size() >= MAX_TICKETS_PER_USER) {
