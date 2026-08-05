@@ -41,13 +41,16 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class TicketService {
 
-    private static final int MAX_TICKETS_PER_USER = 3;
-
     private final TicketRepository ticketRepository;
     private final OcrClient ocrClient;
 
     @Value("${ticket.upload-dir:uploads/tickets}")
     private String uploadDir;
+
+    // Was a hardcoded constant (3) — raised and made configurable so "productos
+    // recurrentes" has a meaningful purchase-history window to work with.
+    @Value("${ticket.max-per-user:50}")
+    private int maxTicketsPerUser;
 
     @Transactional
     public TicketResponse scan(List<MultipartFile> files, User user) {
@@ -267,12 +270,12 @@ public class TicketService {
 
     private void enforceTicketLimit(User user) {
         List<Ticket> tickets = ticketRepository.findByUserIdOrderByCreatedAtAsc(user.getId());
-        while (tickets.size() >= MAX_TICKETS_PER_USER) {
+        while (tickets.size() >= maxTicketsPerUser) {
             Ticket oldest = tickets.remove(0);
             deleteImageFile(oldest.getImagePath());
             ticketRepository.delete(oldest);
             log.info("Eliminado ticket {} (mas antiguo) del usuario {} por limite de {} tickets",
-                    oldest.getId(), user.getEmail(), MAX_TICKETS_PER_USER);
+                    oldest.getId(), user.getEmail(), maxTicketsPerUser);
         }
     }
 

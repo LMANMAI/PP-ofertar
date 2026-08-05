@@ -26,6 +26,18 @@ public class SavingsService {
 
     private final TicketRepository ticketRepository;
 
+    /** All-time top products for a user (no month filter), reusing the same
+     * grouping logic as the monthly savings report's topProducts — used by
+     * ProductService for the "productos recurrentes" feature, which cares
+     * about full purchase history rather than a specific month. */
+    public List<SavingsReportResponse.ProductSavings> getTopProducts(User user, int limit) {
+        List<Ticket> tickets = ticketRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
+                .stream()
+                .filter(t -> t.getStatus() == TicketStatus.PROCESSED)
+                .toList();
+        return buildTopProducts(tickets, limit);
+    }
+
     public SavingsReportResponse getReport(User user, YearMonth from, YearMonth to) {
         List<Ticket> tickets = ticketRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
                 .stream()
@@ -43,7 +55,7 @@ public class SavingsService {
                 .byCategory(buildByCategory(tickets))
                 .byStore(buildByStore(tickets))
                 .timeline(buildTimeline(tickets))
-                .topProducts(buildTopProducts(tickets))
+                .topProducts(buildTopProducts(tickets, 10))
                 .build();
     }
 
@@ -130,7 +142,7 @@ public class SavingsService {
                 .toList();
     }
 
-    private List<SavingsReportResponse.ProductSavings> buildTopProducts(List<Ticket> tickets) {
+    private List<SavingsReportResponse.ProductSavings> buildTopProducts(List<Ticket> tickets, int limit) {
         Map<String, List<TicketItem>> productMap = tickets.stream()
                 .flatMap(t -> t.getItems().stream())
                 .collect(Collectors.groupingBy(item ->
@@ -153,7 +165,7 @@ public class SavingsService {
                             .build();
                 })
                 .sorted(Comparator.comparing(SavingsReportResponse.ProductSavings::getPurchaseCount).reversed())
-                .limit(10)
+                .limit(limit)
                 .toList();
     }
 }
