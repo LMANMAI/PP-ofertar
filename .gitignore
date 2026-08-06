@@ -48,3 +48,6 @@ skills-lock.json
 .env.local
 
 .codegraph
+
+### Eclipse bin ###
+bin/

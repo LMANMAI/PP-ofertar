@@ -145,10 +145,7 @@ public class SavingsService {
     private List<SavingsReportResponse.ProductSavings> buildTopProducts(List<Ticket> tickets, int limit) {
         Map<String, List<TicketItem>> productMap = tickets.stream()
                 .flatMap(t -> t.getItems().stream())
-                .collect(Collectors.groupingBy(item ->
-                        item.getBarcode() != null && !item.getBarcode().isBlank()
-                                ? item.getBarcode()
-                                : item.getDescription()));
+                .collect(Collectors.groupingBy(ProductKeys::keyOf));
 
         return productMap.entrySet().stream()
                 .map(e -> {
