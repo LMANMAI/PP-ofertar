@@ -3,7 +3,6 @@ package ar.edu.ofertAR.service;
 import ar.edu.ofertAR.dto.request.UpdateTicketRequest;
 import ar.edu.ofertAR.dto.response.TicketItemResponse;
 import ar.edu.ofertAR.dto.response.TicketResponse;
-import ar.edu.ofertAR.exception.OcrException;
 import ar.edu.ofertAR.model.Ticket;
 import ar.edu.ofertAR.model.TicketItem;
 import ar.edu.ofertAR.model.TicketStatus;
@@ -33,6 +32,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -43,6 +45,7 @@ public class TicketService {
 
     private final TicketRepository ticketRepository;
     private final OcrClient ocrClient;
+    private final ExecutorService ocrExecutor;
 
     @Value("${ticket.upload-dir:uploads/tickets}")
     private String uploadDir;
@@ -75,6 +78,48 @@ public class TicketService {
         ticket = ticketRepository.save(ticket);
         log.info("Ticket {} creado con {} archivos", ticket.getId(), files.size());
 
+        // Read every payload up front: MultipartFile is tied to the request
+        // thread, so the bytes have to be pulled before handing pages off to
+        // the OCR pool.
+        List<byte[]> payloads = new ArrayList<>();
+        List<String> contentTypes = new ArrayList<>();
+        for (MultipartFile file : files) {
+            try {
+                payloads.add(file.getBytes());
+                contentTypes.add(file.getContentType());
+            } catch (IOException e) {
+                log.error("Error al leer archivo del ticket {}: {}", ticket.getId(), e.getMessage());
+                ticket.setStatus(TicketStatus.FAILED);
+                ticketRepository.save(ticket);
+                return toResponse(ticket);
+            }
+        }
+
+        // Pages are independent OCR calls, so run them concurrently: a 5-page
+        // ticket now costs the slowest page instead of the sum of all of them.
+        List<CompletableFuture<OcrResult>> futures = new ArrayList<>();
+        for (int i = 0; i < payloads.size(); i++) {
+            final byte[] bytes = payloads.get(i);
+            final String contentType = contentTypes.get(i);
+            futures.add(CompletableFuture.supplyAsync(
+                    () -> ocrClient.processTicket(bytes, contentType), ocrExecutor));
+        }
+
+        List<OcrResult> pageResults = new ArrayList<>();
+        try {
+            // join() keeps the original page order, which matters because the
+            // item list is shown to the user in the order it was printed.
+            for (CompletableFuture<OcrResult> future : futures) {
+                pageResults.add(future.join());
+            }
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            log.error("Fallo OCR en el ticket {}: {}", ticket.getId(), cause.getMessage());
+            ticket.setStatus(TicketStatus.FAILED);
+            ticketRepository.save(ticket);
+            return toResponse(ticket);
+        }
+
         boolean anyProcessed = false;
         String mergedStoreName = null;
         String mergedTicketId = null;
@@ -83,55 +128,39 @@ public class TicketService {
         BigDecimal mergedTotalDiscounts = BigDecimal.ZERO;
         List<TicketItem> allItems = new ArrayList<>();
 
-        for (int i = 0; i < files.size(); i++) {
-            MultipartFile file = files.get(i);
-            try {
-                byte[] fileBytes = file.getBytes();
-                OcrResult ocrResult = ocrClient.processTicket(fileBytes, file.getContentType());
+        for (int i = 0; i < pageResults.size(); i++) {
+            OcrResult ocrResult = pageResults.get(i);
 
-                if (mergedStoreName == null || mergedStoreName.isEmpty()) {
-                    mergedStoreName = ocrResult.supermarketName();
-                }
-                if (mergedTicketId == null || mergedTicketId.isEmpty()) {
-                    mergedTicketId = ocrResult.ticketId();
-                }
-                mergedTotal = mergedTotal.max(ocrResult.total());
-                mergedSubtotal = mergedSubtotal.max(ocrResult.subtotal());
-                mergedTotalDiscounts = mergedTotalDiscounts.max(ocrResult.totalDiscounts());
-
-                for (OcrItem ocrItem : ocrResult.items()) {
-                    TicketItem item = TicketItem.builder()
-                            .ticket(ticket)
-                            .description(ocrItem.description())
-                            .rawDescription(ocrItem.rawDescription())
-                            .quantity(ocrItem.quantity())
-                            .unitPrice(ocrItem.price().divide(
-                                    BigDecimal.valueOf(ocrItem.quantity()), 2, RoundingMode.HALF_UP))
-                            .originalPrice(ocrItem.originalPrice())
-                            .subtotal(ocrItem.price())
-                            .barcode(ocrItem.code())
-                            .category(ocrItem.category())
-                            .discountAmount(ocrItem.discountAmount())
-                            .discountDescription(ocrItem.discountDescription())
-                            .build();
-                    allItems.add(item);
-                }
-                anyProcessed = true;
-                log.info("Pagina {}/{} del ticket {} procesada — {} items",
-                        i + 1, files.size(), ticket.getId(), ocrResult.items().size());
-
-            } catch (IOException e) {
-                log.error("Error al leer pagina {} del ticket {}: {}", i + 1, ticket.getId(), e.getMessage());
-                ticket.setStatus(TicketStatus.FAILED);
-                ticketRepository.save(ticket);
-                return toResponse(ticket);
-            } catch (OcrException e) {
-                log.error("Fallo OCR en pagina {}/{} del ticket {}: {}",
-                        i + 1, files.size(), ticket.getId(), e.getMessage());
-                ticket.setStatus(TicketStatus.FAILED);
-                ticketRepository.save(ticket);
-                return toResponse(ticket);
+            if (mergedStoreName == null || mergedStoreName.isEmpty()) {
+                mergedStoreName = ocrResult.supermarketName();
             }
+            if (mergedTicketId == null || mergedTicketId.isEmpty()) {
+                mergedTicketId = ocrResult.ticketId();
+            }
+            mergedTotal = mergedTotal.max(ocrResult.total());
+            mergedSubtotal = mergedSubtotal.max(ocrResult.subtotal());
+            mergedTotalDiscounts = mergedTotalDiscounts.max(ocrResult.totalDiscounts());
+
+            for (OcrItem ocrItem : ocrResult.items()) {
+                TicketItem item = TicketItem.builder()
+                        .ticket(ticket)
+                        .description(ocrItem.description())
+                        .rawDescription(ocrItem.rawDescription())
+                        .quantity(ocrItem.quantity())
+                        .unitPrice(ocrItem.price().divide(
+                                BigDecimal.valueOf(ocrItem.quantity()), 2, RoundingMode.HALF_UP))
+                        .originalPrice(ocrItem.originalPrice())
+                        .subtotal(ocrItem.price())
+                        .barcode(ocrItem.code())
+                        .category(ocrItem.category())
+                        .discountAmount(ocrItem.discountAmount())
+                        .discountDescription(ocrItem.discountDescription())
+                        .build();
+                allItems.add(item);
+            }
+            anyProcessed = true;
+            log.info("Pagina {}/{} del ticket {} procesada — {} items",
+                    i + 1, pageResults.size(), ticket.getId(), ocrResult.items().size());
         }
 
         if (mergedTicketId != null && !mergedTicketId.isEmpty()) {
@@ -144,6 +173,31 @@ public class TicketService {
                 ticketRepository.delete(ticket);
                 return toResponse(existing.get());
             }
+        }
+
+        // The per-page totals come from arithmetic the model did on its own,
+        // and measurements showed that to be the least reliable field it
+        // returns (observed: 0.0, a stray discount amount, and a value 80
+        // pesos off while its own line items summed exactly right). The items
+        // are individually readable off the receipt, so derive the money from
+        // them and only fall back to the model's figure when nothing parsed.
+        if (!allItems.isEmpty()) {
+            BigDecimal itemsTotal = allItems.stream()
+                    .map(it -> it.getSubtotal() != null ? it.getSubtotal() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal itemsDiscounts = allItems.stream()
+                    .map(it -> it.getDiscountAmount() != null ? it.getDiscountAmount().abs() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            if (mergedTotal.compareTo(itemsTotal) != 0) {
+                log.info("Ticket {}: total del modelo {} reemplazado por la suma de items {}",
+                        ticket.getId(), mergedTotal, itemsTotal);
+            }
+            mergedTotal = itemsTotal;
+            mergedTotalDiscounts = itemsDiscounts;
+            // Subtotal is the pre-discount figure, i.e. what was paid plus
+            // everything that was taken off.
+            mergedSubtotal = itemsTotal.add(itemsDiscounts);
         }
 
         ticket.setStoreName(mergedStoreName);
