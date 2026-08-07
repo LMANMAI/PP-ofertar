@@ -21,4 +21,8 @@ public class UpdateProfileRequest {
 
     @Size(max = 20)
     private String phone;
+
+    /** Null leaves the current preference untouched (all fields here are
+     * partial-update style), so the boxed type is deliberate. */
+    private Boolean alternativeBrandsEnabled;
 }

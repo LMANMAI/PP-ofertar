@@ -30,6 +30,7 @@ public class ProductService {
 
     private final TicketRepository ticketRepository;
     private final OfferMatchClient offerMatchClient;
+    private final FavoriteStoreService favoriteStoreService;
 
     public List<RecurringProductResponse> getRecurringProducts(User user, Long ticketId) {
         List<Ticket> tickets = ticketRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
@@ -48,8 +49,12 @@ public class ProductService {
                 .reversed());
         List<ProductGroup> top = groups.stream().limit(MAX_RECURRING_PRODUCTS).toList();
 
+        // Only surface offers from chains the user actually shops at; an empty
+        // favourites list means they haven't chosen, so nothing gets filtered.
         List<OfferMatch> matches = offerMatchClient.matchProducts(
-                top.stream().map(g -> new ProductQuery(g.description, g.barcode)).toList());
+                top.stream().map(g -> new ProductQuery(g.description, g.barcode)).toList(),
+                user.isAlternativeBrandsEnabled(),
+                favoriteStoreService.getFavoriteChainSlugs(user));
 
         return IntStream.range(0, top.size())
                 .mapToObj(i -> {
@@ -74,6 +79,16 @@ public class ProductService {
                                             .promoLabel(match.promoLabel())
                                             .build()
                                     : null)
+                            .alternativeOffers(match.alternativeOffers().stream()
+                                    .map(a -> RecurringProductResponse.AlternativeOffer.builder()
+                                            .productName(a.productName())
+                                            .brand(a.brand())
+                                            .retailerName(a.retailerName())
+                                            .price(a.price())
+                                            .listPrice(a.listPrice())
+                                            .discountPct(a.discountPct())
+                                            .build())
+                                    .toList())
                             .build();
                 })
                 .toList();

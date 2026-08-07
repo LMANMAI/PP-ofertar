@@ -26,13 +26,23 @@ public class OfferMatchClient {
     private final RestClient restClient;
     private final OfferProperties offerProperties;
 
-    public List<OfferMatch> matchProducts(List<ProductQuery> items) {
+    public List<OfferMatch> matchProducts(
+            List<ProductQuery> items, boolean includeAlternativeBrands, List<String> chainSlugs
+    ) {
         if (items.isEmpty()) return List.of();
+
+        StringBuilder query = new StringBuilder();
+        if (includeAlternativeBrands) query.append("alternativeBrands=true");
+        if (chainSlugs != null && !chainSlugs.isEmpty()) {
+            if (query.length() > 0) query.append("&");
+            query.append("chains=").append(String.join(",", chainSlugs));
+        }
 
         try {
             @SuppressWarnings("unchecked")
             var response = (Map<String, Object>) restClient.post()
-                    .uri(offerProperties.getServiceUrl() + "/api/offers/match")
+                    .uri(offerProperties.getServiceUrl() + "/api/offers/match"
+                            + (query.length() > 0 ? "?" + query : ""))
                     .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                     .body(Map.of("items", items.stream().map(i -> Map.of(
                             "description", i.description() == null ? "" : i.description(),
@@ -59,9 +69,10 @@ public class OfferMatchClient {
         for (Map<String, Object> result : results) {
             String matchedBrand = (String) result.get("matchedBrand");
             Map<String, Object> best = (Map<String, Object>) result.get("bestCatalogOffer");
+            List<AlternativeOffer> alternatives = mapAlternatives(result.get("alternativeBrandOffers"));
 
             if (best == null) {
-                matches.add(OfferMatch.none());
+                matches.add(new OfferMatch(matchedBrand, null, null, null, null, null, alternatives));
                 continue;
             }
 
@@ -71,10 +82,30 @@ public class OfferMatchClient {
                     toBigDecimal(best.get("sellingPrice")),
                     toBigDecimal(best.get("listPrice")),
                     toBigDecimal(best.get("discountPct")),
-                    firstPromoLabel(best.get("promoLabels"))
+                    firstPromoLabel(best.get("promoLabels")),
+                    alternatives
             ));
         }
         return matches;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<AlternativeOffer> mapAlternatives(Object raw) {
+        if (!(raw instanceof List<?> list)) return List.of();
+        List<AlternativeOffer> out = new ArrayList<>();
+        for (Object entry : list) {
+            if (!(entry instanceof Map)) continue;
+            Map<String, Object> m = (Map<String, Object>) entry;
+            out.add(new AlternativeOffer(
+                    (String) m.get("productName"),
+                    (String) m.get("brand"),
+                    (String) m.get("retailerName"),
+                    toBigDecimal(m.get("sellingPrice")),
+                    toBigDecimal(m.get("listPrice")),
+                    toBigDecimal(m.get("discountPct"))
+            ));
+        }
+        return out;
     }
 
     private String firstPromoLabel(Object promoLabels) {
@@ -92,16 +123,28 @@ public class OfferMatchClient {
 
     public record ProductQuery(String description, String barcode) {}
 
+    /** Same kind of product, different brand — only populated when the user
+     * opted in via their profile preference. */
+    public record AlternativeOffer(
+            String productName,
+            String brand,
+            String retailerName,
+            BigDecimal price,
+            BigDecimal listPrice,
+            BigDecimal discountPct
+    ) {}
+
     public record OfferMatch(
             String matchedBrand,
             String retailerName,
             BigDecimal price,
             BigDecimal listPrice,
             BigDecimal discountPct,
-            String promoLabel
+            String promoLabel,
+            List<AlternativeOffer> alternativeOffers
     ) {
         public static OfferMatch none() {
-            return new OfferMatch(null, null, null, null, null, null);
+            return new OfferMatch(null, null, null, null, null, null, List.of());
         }
 
         public boolean hasOffer() {

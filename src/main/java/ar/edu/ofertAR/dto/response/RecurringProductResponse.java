@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 @Builder
@@ -28,6 +29,10 @@ public class RecurringProductResponse {
     private BigDecimal totalDiscounts;
     /** Null when no current offer was found for this product's brand. */
     private BestOffer bestOffer;
+    /** Offers on the same kind of product from other brands. Empty unless the
+     * user enabled "marcas alternativas" in their profile. */
+    @Builder.Default
+    private List<AlternativeOffer> alternativeOffers = List.of();
 
     @Data
     @Builder
@@ -39,5 +44,18 @@ public class RecurringProductResponse {
         private BigDecimal listPrice;
         private BigDecimal discountPct;
         private String promoLabel;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AlternativeOffer {
+        private String productName;
+        private String brand;
+        private String retailerName;
+        private BigDecimal price;
+        private BigDecimal listPrice;
+        private BigDecimal discountPct;
     }
 }
