@@ -41,7 +41,11 @@ public class StoreController {
             @RequestParam(required = false) Integer radiusKm,
             @RequestParam(required = false) Boolean onlyFavorites
     ) {
-        int radius = radiusKm != null ? radiusKm : user.getStoreSearchRadiusKm();
+        // Sanitised because a stale 0 (see FavoriteStoreService) or a bad
+        // query param would otherwise search an empty area and look like
+        // "there are no stores near you".
+        int radius = FavoriteStoreService.sanitizeRadius(
+                radiusKm != null ? radiusKm : user.getStoreSearchRadiusKm());
         List<String> chains = Boolean.TRUE.equals(onlyFavorites)
                 ? favoriteStoreService.getFavoriteChainSlugs(user)
                 : List.of();
