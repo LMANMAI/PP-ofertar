@@ -1,6 +1,7 @@
 package ar.edu.ofertAR.exception;
 
 import ar.edu.ofertAR.dto.response.ApiErrorResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -8,10 +9,12 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.HashMap;
 import java.util.Map;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -60,8 +63,27 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Uploading several photos of one long receipt is normal usage and can
+     * legitimately exceed the multipart limits; surfacing that as a generic
+     * 500 gave no clue what went wrong.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleUploadTooLarge(MaxUploadSizeExceededException ex) {
+        log.warn("Subida rechazada por tamaño: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(
+                ApiErrorResponse.builder()
+                        .status(413)
+                        .message("Las imágenes son demasiado grandes. Probá sacar menos fotos o con menor resolución.")
+                        .build()
+        );
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleGeneric(Exception ex) {
+        // Without this the cause was discarded entirely, which made every 500
+        // impossible to diagnose from the logs.
+        log.error("Error no controlado: {}", ex.getMessage(), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                 ApiErrorResponse.builder()
                         .status(500)

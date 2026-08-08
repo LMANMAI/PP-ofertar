@@ -47,6 +47,13 @@ public class Ticket {
     @Builder.Default
     private TicketStatus status = TicketStatus.PENDING;
 
+    /** True once the user has opened the finished ticket and confirmed it.
+     * The first visit allows corrections to the OCR output; afterwards the
+     * ticket is read-only. */
+    @Column(name = "reviewed", nullable = false)
+    @Builder.Default
+    private boolean reviewed = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();

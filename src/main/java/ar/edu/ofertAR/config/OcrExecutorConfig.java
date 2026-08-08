@@ -24,4 +24,20 @@ public class OcrExecutorConfig {
     public ExecutorService ocrExecutor(@Value("${ocr.max-concurrent-pages:5}") int maxConcurrentPages) {
         return Executors.newFixedThreadPool(Math.max(1, maxConcurrentPages));
     }
+
+    /**
+     * Runs whole tickets in the background so the upload request can return as
+     * soon as the files are stored, letting the user keep using the app (and
+     * letting processing survive them losing connectivity).
+     *
+     * Deliberately a *separate* pool from {@link #ocrExecutor}: a ticket task
+     * waits on the per-page tasks it submits, so sharing one pool would let
+     * ticket tasks occupy every thread and deadlock waiting for pages that can
+     * never start.
+     */
+    @Bean(destroyMethod = "shutdown")
+    public ExecutorService ticketProcessingExecutor(
+            @Value("${ticket.max-concurrent-tickets:3}") int maxConcurrentTickets) {
+        return Executors.newFixedThreadPool(Math.max(1, maxConcurrentTickets));
+    }
 }

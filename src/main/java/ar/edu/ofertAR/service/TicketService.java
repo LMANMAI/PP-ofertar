@@ -8,9 +8,6 @@ import ar.edu.ofertAR.model.TicketItem;
 import ar.edu.ofertAR.model.TicketStatus;
 import ar.edu.ofertAR.model.User;
 import ar.edu.ofertAR.repository.TicketRepository;
-import ar.edu.ofertAR.service.ocr.OcrClient;
-import ar.edu.ofertAR.service.ocr.OcrClient.OcrItem;
-import ar.edu.ofertAR.service.ocr.OcrClient.OcrResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,7 +17,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -32,8 +28,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 
@@ -44,13 +38,13 @@ import java.util.stream.Collectors;
 public class TicketService {
 
     private final TicketRepository ticketRepository;
-    private final OcrClient ocrClient;
-    private final ExecutorService ocrExecutor;
+    private final TicketProcessingService ticketProcessingService;
+    private final ExecutorService ticketProcessingExecutor;
 
     @Value("${ticket.upload-dir:uploads/tickets}")
     private String uploadDir;
 
-    // Was a hardcoded constant (3) — raised and made configurable so "productos
+    // Was a hardcoded constant (3) â€” raised and made configurable so "productos
     // recurrentes" has a meaningful purchase-history window to work with.
     @Value("${ticket.max-per-user:50}")
     private int maxTicketsPerUser;
@@ -79,14 +73,11 @@ public class TicketService {
         log.info("Ticket {} creado con {} archivos", ticket.getId(), files.size());
 
         // Read every payload up front: MultipartFile is tied to the request
-        // thread, so the bytes have to be pulled before handing pages off to
-        // the OCR pool.
-        List<byte[]> payloads = new ArrayList<>();
-        List<String> contentTypes = new ArrayList<>();
+        // thread, so the bytes have to be pulled before handing the work off.
+        List<TicketProcessingService.PagePayload> pages = new ArrayList<>();
         for (MultipartFile file : files) {
             try {
-                payloads.add(file.getBytes());
-                contentTypes.add(file.getContentType());
+                pages.add(new TicketProcessingService.PagePayload(file.getBytes(), file.getContentType()));
             } catch (IOException e) {
                 log.error("Error al leer archivo del ticket {}: {}", ticket.getId(), e.getMessage());
                 ticket.setStatus(TicketStatus.FAILED);
@@ -95,123 +86,20 @@ public class TicketService {
             }
         }
 
-        // Pages are independent OCR calls, so run them concurrently: a 5-page
-        // ticket now costs the slowest page instead of the sum of all of them.
-        List<CompletableFuture<OcrResult>> futures = new ArrayList<>();
-        for (int i = 0; i < payloads.size(); i++) {
-            final byte[] bytes = payloads.get(i);
-            final String contentType = contentTypes.get(i);
-            futures.add(CompletableFuture.supplyAsync(
-                    () -> ocrClient.processTicket(bytes, contentType), ocrExecutor));
-        }
-
-        List<OcrResult> pageResults = new ArrayList<>();
-        try {
-            // join() keeps the original page order, which matters because the
-            // item list is shown to the user in the order it was printed.
-            for (CompletableFuture<OcrResult> future : futures) {
-                pageResults.add(future.join());
+        // Hand the OCR to a background worker and answer right away. The user
+        // can keep using the app, and because the work lives on the server it
+        // finishes even if they lose connectivity or close the app.
+        final Long ticketId = ticket.getId();
+        ticketProcessingExecutor.submit(() -> {
+            try {
+                ticketProcessingService.process(ticketId, pages);
+            } catch (Exception e) {
+                log.error("Procesamiento en segundo plano fallÃ³ para el ticket {}: {}",
+                        ticketId, e.getMessage(), e);
             }
-        } catch (CompletionException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            log.error("Fallo OCR en el ticket {}: {}", ticket.getId(), cause.getMessage());
-            ticket.setStatus(TicketStatus.FAILED);
-            ticketRepository.save(ticket);
-            return toResponse(ticket);
-        }
+        });
 
-        boolean anyProcessed = false;
-        String mergedStoreName = null;
-        String mergedTicketId = null;
-        BigDecimal mergedTotal = BigDecimal.ZERO;
-        BigDecimal mergedSubtotal = BigDecimal.ZERO;
-        BigDecimal mergedTotalDiscounts = BigDecimal.ZERO;
-        List<TicketItem> allItems = new ArrayList<>();
-
-        for (int i = 0; i < pageResults.size(); i++) {
-            OcrResult ocrResult = pageResults.get(i);
-
-            if (mergedStoreName == null || mergedStoreName.isEmpty()) {
-                mergedStoreName = ocrResult.supermarketName();
-            }
-            if (mergedTicketId == null || mergedTicketId.isEmpty()) {
-                mergedTicketId = ocrResult.ticketId();
-            }
-            mergedTotal = mergedTotal.max(ocrResult.total());
-            mergedSubtotal = mergedSubtotal.max(ocrResult.subtotal());
-            mergedTotalDiscounts = mergedTotalDiscounts.max(ocrResult.totalDiscounts());
-
-            for (OcrItem ocrItem : ocrResult.items()) {
-                TicketItem item = TicketItem.builder()
-                        .ticket(ticket)
-                        .description(ocrItem.description())
-                        .rawDescription(ocrItem.rawDescription())
-                        .quantity(ocrItem.quantity())
-                        .unitPrice(ocrItem.price().divide(
-                                BigDecimal.valueOf(ocrItem.quantity()), 2, RoundingMode.HALF_UP))
-                        .originalPrice(ocrItem.originalPrice())
-                        .subtotal(ocrItem.price())
-                        .barcode(ocrItem.code())
-                        .category(ocrItem.category())
-                        .discountAmount(ocrItem.discountAmount())
-                        .discountDescription(ocrItem.discountDescription())
-                        .build();
-                allItems.add(item);
-            }
-            anyProcessed = true;
-            log.info("Pagina {}/{} del ticket {} procesada — {} items",
-                    i + 1, pageResults.size(), ticket.getId(), ocrResult.items().size());
-        }
-
-        if (mergedTicketId != null && !mergedTicketId.isEmpty()) {
-            Optional<Ticket> existing = ticketRepository.findByUserIdAndTicketIdAndStatus(
-                    user.getId(), mergedTicketId, TicketStatus.PROCESSED);
-            if (existing.isPresent()) {
-                log.info("Ticket {} ya existe (ticketId={}), descartando PENDING {}", 
-                        existing.get().getId(), mergedTicketId, ticket.getId());
-                deleteImageFile(ticket.getImagePath());
-                ticketRepository.delete(ticket);
-                return toResponse(existing.get());
-            }
-        }
-
-        // The per-page totals come from arithmetic the model did on its own,
-        // and measurements showed that to be the least reliable field it
-        // returns (observed: 0.0, a stray discount amount, and a value 80
-        // pesos off while its own line items summed exactly right). The items
-        // are individually readable off the receipt, so derive the money from
-        // them and only fall back to the model's figure when nothing parsed.
-        if (!allItems.isEmpty()) {
-            BigDecimal itemsTotal = allItems.stream()
-                    .map(it -> it.getSubtotal() != null ? it.getSubtotal() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal itemsDiscounts = allItems.stream()
-                    .map(it -> it.getDiscountAmount() != null ? it.getDiscountAmount().abs() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            if (mergedTotal.compareTo(itemsTotal) != 0) {
-                log.info("Ticket {}: total del modelo {} reemplazado por la suma de items {}",
-                        ticket.getId(), mergedTotal, itemsTotal);
-            }
-            mergedTotal = itemsTotal;
-            mergedTotalDiscounts = itemsDiscounts;
-            // Subtotal is the pre-discount figure, i.e. what was paid plus
-            // everything that was taken off.
-            mergedSubtotal = itemsTotal.add(itemsDiscounts);
-        }
-
-        ticket.setStoreName(mergedStoreName);
-        ticket.setTicketId(mergedTicketId);
-        ticket.setTotal(mergedTotal);
-        ticket.setSubtotal(mergedSubtotal);
-        ticket.setTotalDiscounts(mergedTotalDiscounts);
-        ticket.setStatus(anyProcessed ? TicketStatus.PROCESSED : TicketStatus.FAILED);
-        ticket.setItems(allItems);
-
-        ticket = ticketRepository.save(ticket);
-        log.info("Ticket {} procesado exitosamente — {} items de {} paginas, super: {}",
-                ticket.getId(), allItems.size(), files.size(), ticket.getStoreName());
-
+        log.info("Ticket {} encolado para procesamiento ({} paginas)", ticketId, pages.size());
         return toResponse(ticket);
     }
 
@@ -232,6 +120,16 @@ public class TicketService {
     public TicketResponse updateTicket(Long id, UpdateTicketRequest request, User user) {
         Ticket ticket = ticketRepository.findByIdAndUserId(id, user.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Ticket no encontrado"));
+
+        // Corrections are only meaningful on a finished ticket, and only on
+        // the first pass: once confirmed, the figures feed the savings history
+        // and recurring-product stats, so they stop being editable.
+        if (ticket.getStatus() != TicketStatus.PROCESSED) {
+            throw new IllegalArgumentException("El ticket todavía se está procesando");
+        }
+        if (ticket.isReviewed()) {
+            throw new IllegalArgumentException("Este ticket ya fue confirmado y no puede modificarse");
+        }
 
         if (request.getStoreName() != null) {
             ticket.setStoreName(request.getStoreName());
@@ -308,8 +206,12 @@ public class TicketService {
 			ticket.setTotal(newSubtotal.subtract(discounts));
         }
 
+        // Confirming is what closes the editing window; from here the ticket
+        // is read-only.
+        ticket.setReviewed(true);
+
         ticket = ticketRepository.save(ticket);
-        log.info("Ticket {} actualizado — {} items", ticket.getId(), ticket.getItems().size());
+        log.info("Ticket {} actualizado y confirmado — {} items", ticket.getId(), ticket.getItems().size());
         return toResponse(ticket);
     }
 
@@ -383,6 +285,7 @@ public class TicketService {
                 .subtotal(ticket.getSubtotal())
                 .totalDiscounts(ticket.getTotalDiscounts())
                 .status(ticket.getStatus())
+                .reviewed(ticket.isReviewed())
                 .createdAt(ticket.getCreatedAt())
                 .items(ticket.getItems().stream()
                         .map(this::toItemResponse)
