@@ -24,7 +24,10 @@ public class Ticket {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "image_path")
+    /** Comma-separated: a long receipt is photographed in several parts and
+     * every part's path is stored here. Five photos come to ~330 characters,
+     * so the default VARCHAR(255) silently capped the ticket at three. */
+    @Column(name = "image_path", length = 1000)
     private String imagePath;
 
     @Column(name = "store_name", length = 200)

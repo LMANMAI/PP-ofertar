@@ -13,6 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -89,13 +91,25 @@ public class TicketService {
         // Hand the OCR to a background worker and answer right away. The user
         // can keep using the app, and because the work lives on the server it
         // finishes even if they lose connectivity or close the app.
+        //
+        // Queued only once this transaction has committed. The worker looks
+        // the ticket up by id from its own thread, so while the INSERT is
+        // still uncommitted that lookup finds nothing and the worker discards
+        // the job — leaving the ticket stuck in PENDING with nothing to
+        // retry it. Submitting from afterCommit() is what makes the row
+        // visible before anyone goes looking for it.
         final Long ticketId = ticket.getId();
-        ticketProcessingExecutor.submit(() -> {
-            try {
-                ticketProcessingService.process(ticketId, pages);
-            } catch (Exception e) {
-                log.error("Procesamiento en segundo plano fallÃ³ para el ticket {}: {}",
-                        ticketId, e.getMessage(), e);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                ticketProcessingExecutor.submit(() -> {
+                    try {
+                        ticketProcessingService.process(ticketId, pages);
+                    } catch (Exception e) {
+                        log.error("Procesamiento en segundo plano fallo para el ticket {}: {}",
+                                ticketId, e.getMessage(), e);
+                    }
+                });
             }
         });
 
