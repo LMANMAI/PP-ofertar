@@ -141,13 +141,17 @@ public class TicketProcessingService {
     }
 
     private TicketItem toItem(Ticket ticket, OcrItem ocrItem) {
-        int qty = Math.max(1, ocrItem.quantity());
+        // OcrClient already floors this at one, but the divide below is
+        // unforgiving and a zero here would take down the whole ticket.
+        BigDecimal qty = ocrItem.quantity() != null && ocrItem.quantity().signum() > 0
+                ? ocrItem.quantity()
+                : BigDecimal.ONE;
         return TicketItem.builder()
                 .ticket(ticket)
                 .description(ocrItem.description())
                 .rawDescription(ocrItem.rawDescription())
                 .quantity(qty)
-                .unitPrice(ocrItem.price().divide(BigDecimal.valueOf(qty), 2, RoundingMode.HALF_UP))
+                .unitPrice(ocrItem.price().divide(qty, 2, RoundingMode.HALF_UP))
                 .originalPrice(ocrItem.originalPrice())
                 .subtotal(ocrItem.price())
                 .barcode(ocrItem.code())

@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -188,14 +189,17 @@ public class TicketService {
 							item.setDiscountAmount(reqItem.getDiscountAmount());
 						}
                         item.setSubtotal(
-                                item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()))
+                                item.getUnitPrice().multiply(item.getQuantity())
+                                        .setScale(2, RoundingMode.HALF_UP)
                         );
                         newSubtotal = newSubtotal.add(item.getSubtotal());
                         continue;
                     }
                 }
 
-                int qty = reqItem.getQuantity() != null ? reqItem.getQuantity() : 1;
+                BigDecimal qty = reqItem.getQuantity() != null && reqItem.getQuantity().signum() > 0
+                        ? reqItem.getQuantity()
+                        : BigDecimal.ONE;
                 BigDecimal price = reqItem.getUnitPrice() != null
                         ? reqItem.getUnitPrice()
                         : BigDecimal.ZERO;
@@ -207,7 +211,7 @@ public class TicketService {
 						.unitPrice(price)
 						.originalPrice(reqItem.getOriginalPrice())
 						.discountAmount(reqItem.getDiscountAmount())
-						.subtotal(price.multiply(BigDecimal.valueOf(qty)))
+						.subtotal(price.multiply(qty).setScale(2, RoundingMode.HALF_UP))
 						.build();
                 ticket.getItems().add(item);
                 newSubtotal = newSubtotal.add(item.getSubtotal());

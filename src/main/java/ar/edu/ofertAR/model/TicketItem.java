@@ -24,8 +24,11 @@ public class TicketItem {
     @Column(nullable = false, length = 300)
     private String description;
 
-    @Column(nullable = false)
-    private Integer quantity;
+    /** Decimal because anything sold by weight prints a fraction on the
+     * receipt — 0.52 kg of fiambre is one line, not "1 unit". Three decimals
+     * covers grams, which is as fine as a supermarket scale prints. */
+    @Column(nullable = false, precision = 10, scale = 3)
+    private BigDecimal quantity;
 
     @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal unitPrice;

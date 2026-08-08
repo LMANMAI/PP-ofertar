@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
@@ -42,7 +42,11 @@ public class OcrClient {
                         .body(Map.class);
 
                 return mapToResult(response);
-            } catch (HttpClientErrorException e) {
+            // HttpStatusCodeException, not HttpClientErrorException: the
+            // latter is 4xx only, so a 5xx from the OCR service fell through
+            // to the generic catch below and was reported as a connectivity
+            // problem, hiding both the status and the response body.
+            } catch (HttpStatusCodeException e) {
                 if (e.getStatusCode().value() == 401) {
                     tokenCache.invalidate();
                     token = getValidToken();
@@ -105,7 +109,7 @@ public class OcrClient {
                         toBigDecimal(item.get("price")),
                         toBigDecimal(item.get("original_price")),
                         (String) item.get("code"),
-                        toInt(item.get("quantity")),
+                        toQuantity(item.get("quantity")),
                         (String) item.get("category"),
                         toBigDecimal(item.get("discount") instanceof Map
                                 ? ((Map<String, Object>) item.get("discount")).get("amount")
@@ -134,14 +138,26 @@ public class OcrClient {
         return BigDecimal.ZERO;
     }
 
-    private int toInt(Object value) {
-        if (value == null) return 1;
-        if (value instanceof Number n) return n.intValue();
-        try {
-            return Integer.parseInt(value.toString());
-        } catch (NumberFormatException e) {
-            return 1;
+    /**
+     * Kept decimal on purpose: a line sold by weight comes back as 0.52, and
+     * truncating that to an int silently turned half a kilo into "1 unit"
+     * with the whole line's price as its unit price.
+     */
+    private BigDecimal toQuantity(Object value) {
+        if (value == null) return BigDecimal.ONE;
+        BigDecimal qty;
+        if (value instanceof BigDecimal bd) {
+            qty = bd;
+        } else if (value instanceof Number n) {
+            qty = BigDecimal.valueOf(n.doubleValue());
+        } else {
+            try {
+                qty = new BigDecimal(value.toString());
+            } catch (NumberFormatException e) {
+                return BigDecimal.ONE;
+            }
         }
+        return qty.signum() > 0 ? qty : BigDecimal.ONE;
     }
 
     public record OcrResult(
@@ -159,7 +175,7 @@ public class OcrClient {
             BigDecimal price,
             BigDecimal originalPrice,
             String code,
-            int quantity,
+            BigDecimal quantity,
             String category,
             BigDecimal discountAmount,
             String discountDescription

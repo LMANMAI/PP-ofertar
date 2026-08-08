@@ -16,7 +16,7 @@ public class TicketItemResponse {
     private Long id;
     private String description;
     private String rawDescription;
-    private Integer quantity;
+    private BigDecimal quantity;
     private BigDecimal unitPrice;
     private BigDecimal originalPrice;
     private BigDecimal subtotal;
