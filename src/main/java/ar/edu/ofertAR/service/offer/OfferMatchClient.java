@@ -70,9 +70,10 @@ public class OfferMatchClient {
             String matchedBrand = (String) result.get("matchedBrand");
             Map<String, Object> best = (Map<String, Object>) result.get("bestCatalogOffer");
             List<AlternativeOffer> alternatives = mapAlternatives(result.get("alternativeBrandOffers"));
+            List<CampaignOffer> campaigns = mapCampaigns(result.get("campaignOffers"));
 
             if (best == null) {
-                matches.add(new OfferMatch(matchedBrand, null, null, null, null, null, alternatives));
+                matches.add(new OfferMatch(matchedBrand, null, null, null, null, null, alternatives, campaigns));
                 continue;
             }
 
@@ -83,7 +84,8 @@ public class OfferMatchClient {
                     toBigDecimal(best.get("listPrice")),
                     toBigDecimal(best.get("discountPct")),
                     firstPromoLabel(best.get("promoLabels")),
-                    alternatives
+                    alternatives,
+                    campaigns
             ));
         }
         return matches;
@@ -104,6 +106,41 @@ public class OfferMatchClient {
                     toBigDecimal(m.get("listPrice")),
                     toBigDecimal(m.get("discountPct"))
             ));
+        }
+        return out;
+    }
+
+    /**
+     * The regional campaign promotions the scraper matched to this brand. These
+     * are the only offers that carry a validity window and legal terms — the
+     * catalog offer is just today's shelf price — so dropping them, as this
+     * client used to, left the app with no way to tell the user until when a
+     * promotion runs.
+     */
+    @SuppressWarnings("unchecked")
+    private List<CampaignOffer> mapCampaigns(Object raw) {
+        if (!(raw instanceof List<?> list)) return List.of();
+        List<CampaignOffer> out = new ArrayList<>();
+        for (Object entry : list) {
+            if (!(entry instanceof Map)) continue;
+            Map<String, Object> m = (Map<String, Object>) entry;
+            out.add(new CampaignOffer(
+                    (String) m.get("retailerName"),
+                    (String) m.get("province"),
+                    (String) m.get("legalText"),
+                    (String) m.get("activeTo"),
+                    (String) m.get("imageUrl"),
+                    toIntList(m.get("bestGuessPercentages"))
+            ));
+        }
+        return out;
+    }
+
+    private List<Integer> toIntList(Object raw) {
+        if (!(raw instanceof List<?> list)) return List.of();
+        List<Integer> out = new ArrayList<>();
+        for (Object v : list) {
+            if (v instanceof Number n) out.add(n.intValue());
         }
         return out;
     }
@@ -134,6 +171,18 @@ public class OfferMatchClient {
             BigDecimal discountPct
     ) {}
 
+    /** A regional campaign promotion (the /promociones creatives), which unlike
+     * a catalog price has a validity window and legal terms attached. */
+    public record CampaignOffer(
+            String retailerName,
+            String province,
+            String legalText,
+            /** ISO-8601 string, exactly as the scraper stores it. */
+            String activeTo,
+            String imageUrl,
+            List<Integer> discountPercentages
+    ) {}
+
     public record OfferMatch(
             String matchedBrand,
             String retailerName,
@@ -141,10 +190,11 @@ public class OfferMatchClient {
             BigDecimal listPrice,
             BigDecimal discountPct,
             String promoLabel,
-            List<AlternativeOffer> alternativeOffers
+            List<AlternativeOffer> alternativeOffers,
+            List<CampaignOffer> campaignOffers
     ) {
         public static OfferMatch none() {
-            return new OfferMatch(null, null, null, null, null, null, List.of());
+            return new OfferMatch(null, null, null, null, null, null, List.of(), List.of());
         }
 
         public boolean hasOffer() {

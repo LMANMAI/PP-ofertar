@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -70,6 +71,18 @@ public class ProductService {
                             .ticketCount(g.ticketCount)
                             .inReferenceTicket(inReference)
                             .totalDiscounts(g.totalDiscounts)
+                            .lastPaidPrice(g.lastPaidPrice)
+                            .lastPaidAt(g.lastPaidAt)
+                            .campaignOffers(match.campaignOffers().stream()
+                                    .map(c -> RecurringProductResponse.CampaignOffer.builder()
+                                            .retailerName(c.retailerName())
+                                            .province(c.province())
+                                            .legalText(c.legalText())
+                                            .activeTo(c.activeTo())
+                                            .imageUrl(c.imageUrl())
+                                            .discountPercentages(c.discountPercentages())
+                                            .build())
+                                    .toList())
                             .bestOffer(match.hasOffer()
                                     ? RecurringProductResponse.BestOffer.builder()
                                             .retailerName(match.retailerName())
@@ -104,9 +117,13 @@ public class ProductService {
 
     private List<ProductGroup> groupPurchases(List<Ticket> tickets) {
         Map<String, ProductGroup> byKey = new LinkedHashMap<>();
+        // `tickets` arrives newest-first, so the item that creates a group is
+        // the most recent purchase of that product — which is what makes the
+        // constructor's unit price the "last paid" one.
         for (Ticket ticket : tickets) {
             for (TicketItem item : ticket.getItems()) {
-                ProductGroup group = byKey.computeIfAbsent(ProductKeys.keyOf(item), k -> new ProductGroup(item));
+                ProductGroup group = byKey.computeIfAbsent(
+                        ProductKeys.keyOf(item), k -> new ProductGroup(item, ticket));
                 group.purchaseCount += 1;
                 group.ticketIds.add(ticket.getId());
                 if (item.getDiscountAmount() != null) {
@@ -125,15 +142,19 @@ public class ProductService {
         private final String barcode;
         private final String category;
         private final java.util.Set<Long> ticketIds = new java.util.HashSet<>();
+        private final BigDecimal lastPaidPrice;
+        private final LocalDateTime lastPaidAt;
         private long purchaseCount;
         private long ticketCount;
         private BigDecimal totalDiscounts = BigDecimal.ZERO;
 
-        private ProductGroup(TicketItem sample) {
+        private ProductGroup(TicketItem sample, Ticket ticket) {
             this.sample = sample;
             this.description = sample.getDescription();
             this.barcode = sample.getBarcode();
             this.category = sample.getCategory();
+            this.lastPaidPrice = sample.getUnitPrice();
+            this.lastPaidAt = ticket.getCreatedAt();
         }
     }
 }

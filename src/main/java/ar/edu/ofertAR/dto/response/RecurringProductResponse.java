@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
@@ -27,8 +28,22 @@ public class RecurringProductResponse {
      * Drives both the shopping-list checklist and the "forgot to buy?" prompt. */
     private boolean inReferenceTicket;
     private BigDecimal totalDiscounts;
+    /** Unit price the user actually paid the last time they bought it, so the
+     * app can put a current offer against their own history instead of only
+     * against the retailer's list price. Null if the ticket never recorded one.
+     *
+     * Careful with products sold by weight: this is per kilo, while a catalog
+     * offer is per package, so the two are not comparable for those lines. */
+    private BigDecimal lastPaidPrice;
+    /** When that purchase happened, so the app can say "hace 3 semanas". */
+    private LocalDateTime lastPaidAt;
     /** Null when no current offer was found for this product's brand. */
     private BestOffer bestOffer;
+    /** Regional campaign promotions matching this product's brand. These are
+     * the offers that carry a validity window; {@link BestOffer} is just the
+     * current shelf price. Empty when none match. */
+    @Builder.Default
+    private List<CampaignOffer> campaignOffers = List.of();
     /** Offers on the same kind of product from other brands. Empty unless the
      * user enabled "marcas alternativas" in their profile. */
     @Builder.Default
@@ -44,6 +59,23 @@ public class RecurringProductResponse {
         private BigDecimal listPrice;
         private BigDecimal discountPct;
         private String promoLabel;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CampaignOffer {
+        private String retailerName;
+        private String province;
+        private String legalText;
+        /** ISO-8601 string as published by the retailer; the app formats it. */
+        private String activeTo;
+        private String imageUrl;
+        /** Percentages the OCR read off the creative, e.g. [30, 40]. Best guess:
+         * these come from reading a promo image, not from a structured field. */
+        @Builder.Default
+        private List<Integer> discountPercentages = List.of();
     }
 
     @Data
