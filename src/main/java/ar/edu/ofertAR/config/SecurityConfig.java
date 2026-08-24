@@ -37,6 +37,7 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/auth/**", "/docs", "/docs/**", "/api-docs", "/api-docs/**", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/sepa/**").permitAll()
                 .anyRequest().authenticated()
             )
             .sessionManagement(session ->
