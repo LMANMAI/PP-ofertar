@@ -85,9 +85,9 @@ public class RecurringProductResponse {
          * the app whether the percentage is a straight discount or a
          * conditional one, which changes how it must be worded. */
         private String mechanic;
-        /** True when the sources disagree on the percentage; the app hedges
-         * the number instead of stating it. */
-        private boolean percentagesConflict;
+        /** The percentage rests on OCR alone, with no campaign metadata to
+         * confirm it. The app hedges only in that case. */
+        private boolean percentagesUnverified;
     }
 
     @Data

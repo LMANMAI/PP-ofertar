@@ -82,7 +82,7 @@ public class ProductService {
                                             .imageUrl(c.imageUrl())
                                             .discountPercentages(c.discountPercentages())
                                             .mechanic(c.mechanic())
-                                            .percentagesConflict(c.percentagesConflict())
+                                            .percentagesUnverified(c.percentagesUnverified())
                                             .build())
                                     .toList())
                             .bestOffer(match.hasOffer()

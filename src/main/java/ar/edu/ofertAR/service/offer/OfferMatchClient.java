@@ -133,7 +133,7 @@ public class OfferMatchClient {
                     (String) m.get("imageUrl"),
                     toIntList(m.get("bestGuessPercentages")),
                     (String) m.get("mechanic"),
-                    Boolean.TRUE.equals(m.get("percentagesConflict"))
+                    Boolean.TRUE.equals(m.get("percentagesUnverified"))
             ));
         }
         return out;
@@ -188,9 +188,11 @@ public class OfferMatchClient {
              * or null. A "70% en la 2da unidad" is not comparable to a straight
              * price, and without this the app could only show the bare number. */
             String mechanic,
-            /** The campaign's filename metadata and the OCR of its image
-             * disagree on the percentage, so the app must hedge it. */
-            boolean percentagesConflict
+            /** The percentage came from OCR alone, with no campaign metadata to
+             * confirm it — the only case that actually warrants a hedge. When
+             * the two sources disagree the metadata is right, so that is not a
+             * reason to doubt the number. */
+            boolean percentagesUnverified
     ) {}
 
     public record OfferMatch(
