@@ -73,13 +73,14 @@ public class OfferMatchClient {
             List<CampaignOffer> campaigns = mapCampaigns(result.get("campaignOffers"));
 
             if (best == null) {
-                matches.add(new OfferMatch(matchedBrand, null, null, null, null, null, alternatives, campaigns));
+                matches.add(new OfferMatch(matchedBrand, null, null, null, null, null, null, alternatives, campaigns));
                 continue;
             }
 
             matches.add(new OfferMatch(
                     matchedBrand,
                     (String) best.get("retailerName"),
+                    (String) best.get("productName"),
                     toBigDecimal(best.get("sellingPrice")),
                     toBigDecimal(best.get("listPrice")),
                     toBigDecimal(best.get("discountPct")),
@@ -130,7 +131,9 @@ public class OfferMatchClient {
                     (String) m.get("legalText"),
                     (String) m.get("activeTo"),
                     (String) m.get("imageUrl"),
-                    toIntList(m.get("bestGuessPercentages"))
+                    toIntList(m.get("bestGuessPercentages")),
+                    (String) m.get("mechanic"),
+                    Boolean.TRUE.equals(m.get("percentagesConflict"))
             ));
         }
         return out;
@@ -180,12 +183,23 @@ public class OfferMatchClient {
             /** ISO-8601 string, exactly as the scraper stores it. */
             String activeTo,
             String imageUrl,
-            List<Integer> discountPercentages
+            List<Integer> discountPercentages,
+            /** How the discount applies: second_unit, 3x2, 2x1, percentage_off
+             * or null. A "70% en la 2da unidad" is not comparable to a straight
+             * price, and without this the app could only show the bare number. */
+            String mechanic,
+            /** The campaign's filename metadata and the OCR of its image
+             * disagree on the percentage, so the app must hedge it. */
+            boolean percentagesConflict
     ) {}
 
     public record OfferMatch(
             String matchedBrand,
             String retailerName,
+            /** Name of the catalog SKU the price belongs to. Shown to the user
+             * so a same-brand-but-different-product match is visible instead of
+             * silently passing as the price of what they actually bought. */
+            String productName,
             BigDecimal price,
             BigDecimal listPrice,
             BigDecimal discountPct,
@@ -194,7 +208,7 @@ public class OfferMatchClient {
             List<CampaignOffer> campaignOffers
     ) {
         public static OfferMatch none() {
-            return new OfferMatch(null, null, null, null, null, null, List.of(), List.of());
+            return new OfferMatch(null, null, null, null, null, null, null, List.of(), List.of());
         }
 
         public boolean hasOffer() {

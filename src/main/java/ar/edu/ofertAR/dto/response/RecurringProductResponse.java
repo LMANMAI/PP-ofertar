@@ -55,6 +55,11 @@ public class RecurringProductResponse {
     @AllArgsConstructor
     public static class BestOffer {
         private String retailerName;
+        /** The catalog product this price belongs to. It shares the brand and
+         * the kind of product with what the user bought, but not necessarily
+         * the size or variety, so the app shows it rather than implying the
+         * price is for the exact item on their receipt. */
+        private String productName;
         private BigDecimal price;
         private BigDecimal listPrice;
         private BigDecimal discountPct;
@@ -76,6 +81,13 @@ public class RecurringProductResponse {
          * these come from reading a promo image, not from a structured field. */
         @Builder.Default
         private List<Integer> discountPercentages = List.of();
+        /** second_unit, 3x2, 2x1, percentage_off, or null when unknown. Tells
+         * the app whether the percentage is a straight discount or a
+         * conditional one, which changes how it must be worded. */
+        private String mechanic;
+        /** True when the sources disagree on the percentage; the app hedges
+         * the number instead of stating it. */
+        private boolean percentagesConflict;
     }
 
     @Data
