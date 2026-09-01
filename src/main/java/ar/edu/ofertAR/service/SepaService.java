@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -52,11 +53,25 @@ public class SepaService {
 
     private static final Pattern DATE_PATTERN = Pattern.compile("(\\d{4}-\\d{2}-\\d{2})");
 
+    private static final String USER_AGENT = "OfertAR/1.0 (https://github.com/LMANMAI/PP-ofertar)";
+
     @Value("${sepa.ckan-package-url:https://datos.produccion.gob.ar/api/3/action/package_show?id=sepa-precios}")
     private String ckanPackageUrl;
 
     @Value("${sepa.cache-dir:${java.io.tmpdir}/sepa-cache}")
     private String cacheDir;
+
+    /** Espejo http/https del zip (opcional; esquiva el 403 de la IP). */
+    @Value("${sepa.resource-url:}")
+    private String resourceUrlOverride;
+
+    /** Ruta local del zip dentro del contenedor (opcional; p.ej. volumen montado). */
+    @Value("${sepa.resource-file:}")
+    private String resourceFileOverride;
+
+    /** Fecha del dataset (YYYY-MM-DD) cuando no se puede extraer del nombre. */
+    @Value("${sepa.resource-fecha:}")
+    private String resourceFechaOverride;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -82,7 +97,7 @@ public class SepaService {
         return SepaPreciosPageResponse.builder()
                 .dia(resource.dia())
                 .fecha(resource.fecha())
-                .recursoUrl(resource.url())
+                .recursoUrl(displayUrl(resource.url()))
                 .page(page)
                 .size(size)
                 .totalElementos(collector.total)
@@ -139,14 +154,20 @@ public class SepaService {
     // ── 1. Resolver recurso vía API CKAN ─────────────────────────────
 
     private SepaResource resolveResource(String dia) {
+        Optional<SepaResource> override = resolvedOverride();
+        if (override.isPresent()) {
+            return override.get();
+        }
+
         JsonNode root;
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(ckanPackageUrl))
                     .timeout(Duration.ofSeconds(60))
                     .header("Accept", "application/json")
+                    .header("User-Agent", USER_AGENT)
                     .GET()
                     .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = sendWithRetry(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 throw new IOException("CKAN respondió HTTP " + response.statusCode());
             }
@@ -195,6 +216,70 @@ public class SepaService {
         return best;
     }
 
+    /**
+     * Override para esquivar el 403 por IP de datos.produccion.gob.ar: permite
+     * apuntar a un espejo del zip (URL pública o archivo local del contenedor).
+     * Devuelve vacío si no hay override configurado (se sigue usando CKAN).
+     */
+    private Optional<SepaResource> resolvedOverride() {
+        String fuente;
+        if (resourceFileOverride != null && !resourceFileOverride.isBlank()) {
+            fuente = "file://" + resourceFileOverride;
+        } else if (resourceUrlOverride != null && !resourceUrlOverride.isBlank()) {
+            fuente = resourceUrlOverride;
+        } else {
+            return Optional.empty();
+        }
+
+        String fecha = resourceFechaOverride == null ? "" : resourceFechaOverride.trim();
+        if (fecha.isBlank()) {
+            fecha = extractDate(fuente);
+        }
+        if (fecha.isBlank() || "0000-00-00".equals(fecha)) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "SEPA_RESOURCE_FILE/URL seteado pero falta SEPA_RESOURCE_FECHA (YYYY-MM-DD)");
+        }
+
+        log.info("SEPA: recurso por override (fecha {}): {}", fecha, displayUrl(fuente));
+        return Optional.of(new SepaResource(fecha, fecha, fuente));
+    }
+
+    /** No exponer rutas internas del servidor en respuestas/logs amigables. */
+    private static String displayUrl(String url) {
+        if (url == null || !url.startsWith("file://")) {
+            return url;
+        }
+        try {
+            return Path.of(URI.create(url)).getFileName().toString();
+        } catch (Exception e) {
+            return url;
+        }
+    }
+
+    /** Envía con reintentos (backoff exponencial) ante errores de red o HTTP 5xx. */
+    private <T> HttpResponse<T> sendWithRetry(HttpRequest request, HttpResponse.BodyHandler<T> handler)
+            throws IOException, InterruptedException {
+        final int attempts = 3;
+        IOException last = null;
+        for (int i = 0; i < attempts; i++) {
+            try {
+                HttpResponse<T> response = httpClient.send(request, handler);
+                if (response.statusCode() < 500) {
+                    return response;
+                }
+                last = new IOException("HTTP " + response.statusCode());
+            } catch (IOException e) {
+                last = e;
+            }
+            if (i < attempts - 1) {
+                long backoff = (long) Math.pow(2, i) * 1000; // 1s, 2s
+                log.warn("SEPA: reintento {}/{} en {}ms", i + 1, attempts, backoff);
+                Thread.sleep(backoff);
+            }
+        }
+        throw last;
+    }
+
     private String extractDate(String... candidates) {
         for (String c : candidates) {
             if (c == null) continue;
@@ -207,6 +292,10 @@ public class SepaService {
     // ── 2. Descargar con cache en disco ──────────────────────────────
 
     private synchronized Path downloadWithCache(SepaResource resource) {
+        if (resource.url().startsWith("file://")) {
+            return localZipPath(resource.url());
+        }
+
         try {
             Path dir = Path.of(cacheDir);
             Files.createDirectories(dir);
@@ -219,9 +308,13 @@ public class SepaService {
             }
 
             log.info("SEPA: descargando {} (puede tardar varios minutos)...", resource.url());
-            HttpRequest request = HttpRequest.newBuilder(URI.create(resource.url())).GET().build();
+            HttpRequest request = HttpRequest.newBuilder(URI.create(resource.url()))
+                    .timeout(Duration.ofMinutes(30))
+                    .header("User-Agent", USER_AGENT)
+                    .GET()
+                    .build();
             Path tmp = dir.resolve(fileName + ".part");
-            HttpResponse<Path> response = httpClient.send(request, HttpResponse.BodyHandlers.ofFile(tmp));
+            HttpResponse<Path> response = sendWithRetry(request, HttpResponse.BodyHandlers.ofFile(tmp));
             if (response.statusCode() != 200) {
                 Files.deleteIfExists(tmp);
                 throw new IOException("Descarga falló con HTTP " + response.statusCode());
@@ -233,6 +326,22 @@ public class SepaService {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "No se pudo descargar el dataset SEPA: " + e.getMessage(), e);
+        }
+    }
+
+    /** Devuelve la ruta de un zip local (file://), validando que exista y no esté vacío. */
+    private Path localZipPath(String fileUrl) {
+        try {
+            Path local = Path.of(URI.create(fileUrl));
+            if (!Files.exists(local) || Files.size(local) <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "No se encontró el archivo SEPA local: " + local);
+            }
+            log.info("SEPA: usando archivo local {}", local);
+            return local;
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "No se pudo leer el archivo SEPA local " + fileUrl + ": " + e.getMessage(), e);
         }
     }
 
