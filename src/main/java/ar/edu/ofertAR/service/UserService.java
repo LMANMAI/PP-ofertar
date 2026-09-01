@@ -36,6 +36,9 @@ public class UserService {
         if (request.getPhone() != null) {
             user.setPhone(request.getPhone());
         }
+        if (request.getAlternativeBrandsEnabled() != null) {
+            user.setAlternativeBrandsEnabled(request.getAlternativeBrandsEnabled());
+        }
 
         userRepository.save(user);
 
@@ -67,6 +70,7 @@ public class UserService {
                 .profilePicture(user.getProfilePicture())
                 .address(user.getAddress())
                 .phone(user.getPhone())
+                .alternativeBrandsEnabled(user.isAlternativeBrandsEnabled())
                 .createdAt(user.getCreatedAt())
                 .build();
     }

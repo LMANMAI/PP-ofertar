@@ -18,8 +18,14 @@ public class TicketResponse {
 
     private Long id;
     private String storeName;
+    private String ticketId;
     private BigDecimal total;
+    private BigDecimal subtotal;
+    private BigDecimal totalDiscounts;
     private TicketStatus status;
+    /** False until the user has opened and confirmed the finished ticket.
+     * Drives whether the app still allows correcting the OCR output. */
+    private boolean reviewed;
     private LocalDateTime createdAt;
     private List<TicketItemResponse> items;
 }
