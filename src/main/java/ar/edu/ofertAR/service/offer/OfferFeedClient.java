@@ -30,20 +30,29 @@ public class OfferFeedClient {
     private final OfferProperties offerProperties;
 
     public OfferFeedResponse listOffers(List<String> chainSlugs, int page, int pageSize, String province) {
-        List<OfferFeedResponse.Offer> campaigns = fetchCampaigns(chainSlugs, province);
-        CatalogPage catalog = fetchCatalog(chainSlugs, page, pageSize);
+        boolean firstPage = page <= 1;
+        List<OfferFeedResponse.Offer> campaigns =
+                firstPage ? fetchCampaigns(chainSlugs, province) : List.of();
 
-        List<OfferFeedResponse.Offer> items = new ArrayList<>();
-        // Campaigns lead: they expire, so they are the ones worth acting on
-        // first. They are few (dozens), so they only ride along on page 1.
-        if (page <= 1) items.addAll(campaigns);
+        // Campaigns lead — they expire, so they are what is worth acting on
+        // first — but they must not swallow the page. They used to be appended
+        // whole: 55 active promotions turned a pageSize=8 request into 63
+        // items, and the home carousel rendered every one of them. Half the
+        // page at most, so the catalog is always represented too.
+        int campaignSlots = campaigns.isEmpty() ? 0 : Math.max(1, pageSize / 2);
+        List<OfferFeedResponse.Offer> shownCampaigns =
+                campaigns.subList(0, Math.min(campaignSlots, campaigns.size()));
+
+        int catalogSlots = Math.max(1, pageSize - shownCampaigns.size());
+        CatalogPage catalog = fetchCatalog(chainSlugs, page, catalogSlots);
+
+        List<OfferFeedResponse.Offer> items = new ArrayList<>(shownCampaigns);
         items.addAll(catalog.items());
 
-        long total = catalog.total() + (page <= 1 ? campaigns.size() : 0);
         return OfferFeedResponse.builder()
                 .page(page)
                 .pageSize(pageSize)
-                .total(total)
+                .total(catalog.total() + campaigns.size())
                 .totalPages(catalog.totalPages())
                 .items(items)
                 .build();
@@ -126,14 +135,30 @@ public class OfferFeedClient {
                         .id("campaign:" + row.get("external_id"))
                         .kind("campaign")
                         .retailerSlug((String) row.get("retailer_slug"))
-                        .retailerName((String) row.get("retailer_slug"))
+                        // Falls back to the slug only for a scraper that
+                        // predates retailer_name; the app shows this verbatim.
+                        .retailerName(row.get("retailer_name") instanceof String name
+                                ? name
+                                : (String) row.get("retailer_slug"))
                         .headline(campaignHeadline(percentages, mechanic))
+                        // The app words the card itself from these two, with the
+                        // same rules as campaignHeadline; the headline above is
+                        // the fallback for app versions that predate them.
+                        .mechanic(mechanic)
+                        .discountPercentages(percentages)
                         // The categories the vision model read off the creative
                         // are the closest thing a campaign has to a category.
                         .category(firstOf(row.get("categories")))
-                        .discountPct(percentages.isEmpty()
-                                ? null
-                                : BigDecimal.valueOf(percentages.get(0)))
+                        // The largest of them, not the first: several
+                        // percentages on one creative are several offers
+                        // sharing a banner, and the headline reads "hasta", so
+                        // the number beside it has to be the same ceiling.
+                        // Taking get(0) made a "25_35" campaign say "hasta 35%"
+                        // and carry a discountPct of 25.
+                        .discountPct(percentages.stream()
+                                .max(Integer::compareTo)
+                                .map(BigDecimal::valueOf)
+                                .orElse(null))
                         .province((String) row.get("province"))
                         .activeTo((String) row.get("active_to"))
                         .legalText((String) row.get("legal_text"))
@@ -148,21 +173,39 @@ public class OfferFeedClient {
         }
     }
 
-    /** Same wording rules the app uses per product, so a promotion reads the
-     * same in the feed as it does on a product card. A conditional mechanic
-     * must never be phrased as a straight discount. */
+    /**
+     * Same wording rules the app uses per product ({@code describePromo} in
+     * offersApi.ts), so a promotion reads the same in the feed as it does on a
+     * product card. Two rules carry the weight here:
+     *
+     * <ul>
+     *   <li>A conditional mechanic is never phrased as a straight discount —
+     *       "70% en la 2da unidad" is worth half of what it looks like.</li>
+     *   <li>Several percentages are collapsed to their maximum, prefixed with
+     *       "Hasta". They come off a single creative and nothing in the
+     *       pipeline records which condition each one belongs to, so joining
+     *       them with " / " ("50% / 12% de descuento") claimed a relationship
+     *       the data never had.</li>
+     * </ul>
+     */
     private String campaignHeadline(List<Integer> percentages, String mechanic) {
-        String list = percentages.isEmpty()
-                ? ""
-                : percentages.stream().map(p -> p + "%").reduce((a, b) -> a + " / " + b).orElse("");
-        if (mechanic == null) return list.isEmpty() ? "Promoción vigente" : "Promoción de hasta " + list;
-        return switch (mechanic) {
-            case "second_unit" -> list.isEmpty() ? "Descuento en la 2da unidad" : list + " en la 2da unidad";
-            case "3x2" -> "3x2";
-            case "2x1" -> "2x1";
-            case "percentage_off" -> list.isEmpty() ? "Promoción vigente" : list + " de descuento";
-            default -> list.isEmpty() ? "Promoción vigente" : "Promoción de hasta " + list;
-        };
+        // Distinct: the same number twice is still one advertised discount, and
+        // the filename hint ("50_50...") does not deduplicate the way OCR does.
+        List<Integer> valid = percentages.stream().filter(p -> p > 0 && p <= 100).distinct().toList();
+        Integer top = valid.stream().max(Integer::compareTo).orElse(null);
+        String pct = top == null ? null : top + "%";
+        String prefix = valid.size() > 1 ? "Hasta " : "";
+
+        if ("3x2".equals(mechanic)) return "3x2";
+        if ("2x1".equals(mechanic)) return "2x1";
+        if ("second_unit".equals(mechanic)) {
+            return pct == null ? "Descuento en la 2da unidad" : prefix + pct + " en la 2da unidad";
+        }
+        if ("percentage_off".equals(mechanic) && pct != null) {
+            return prefix + pct + " de descuento";
+        }
+        // Unknown or absent mechanic, or a percentage_off with nothing readable.
+        return pct == null ? "Promoción vigente" : "Promoción de hasta " + pct;
     }
 
     @SuppressWarnings("unchecked")

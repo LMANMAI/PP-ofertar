@@ -54,5 +54,14 @@ public class OfferFeedResponse {
         private String activeTo;
         private String legalText;
         private boolean percentagesUnverified;
+        /** Campaign only: how the discount applies — "second_unit", "3x2",
+         * "2x1", "percentage_off", or null when the scraper could not tell.
+         * The app words the card from this rather than parsing the headline
+         * back apart, so the two can never drift. */
+        private String mechanic;
+        /** Campaign only: every percentage the creative advertises. The
+         * headline shows the ceiling of these; the app needs the set to know
+         * whether the ceiling is one number or several. */
+        private List<Integer> discountPercentages;
     }
 }
