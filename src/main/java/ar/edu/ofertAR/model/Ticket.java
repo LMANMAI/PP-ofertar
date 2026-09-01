@@ -24,19 +24,38 @@ public class Ticket {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "image_path")
+    /** Comma-separated: a long receipt is photographed in several parts and
+     * every part's path is stored here. Five photos come to ~330 characters,
+     * so the default VARCHAR(255) silently capped the ticket at three. */
+    @Column(name = "image_path", length = 1000)
     private String imagePath;
 
     @Column(name = "store_name", length = 200)
     private String storeName;
 
+    @Column(name = "ticket_id", length = 100)
+    private String ticketId;
+
     @Column(precision = 12, scale = 2)
     private BigDecimal total;
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal subtotal;
+
+    @Column(name = "total_discounts", precision = 12, scale = 2)
+    private BigDecimal totalDiscounts;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
     private TicketStatus status = TicketStatus.PENDING;
+
+    /** True once the user has opened the finished ticket and confirmed it.
+     * The first visit allows corrections to the OCR output; afterwards the
+     * ticket is read-only. */
+    @Column(name = "reviewed", nullable = false)
+    @Builder.Default
+    private boolean reviewed = false;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default

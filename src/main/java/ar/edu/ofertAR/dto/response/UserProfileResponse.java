@@ -19,5 +19,6 @@ public class UserProfileResponse {
     private String profilePicture;
     private String address;
     private String phone;
+    private boolean alternativeBrandsEnabled;
     private LocalDateTime createdAt;
 }

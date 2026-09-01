@@ -36,7 +36,9 @@ public class User implements UserDetails {
     @Builder.Default
     private Role role = Role.USER;
 
-    @Column(name = "profile_picture")
+    @Basic(fetch = FetchType.LAZY)
+    @Column(name = "profile_picture", columnDefinition = "LONGTEXT")
+    @ToString.Exclude
     private String profilePicture;
 
     @Column(length = 300)
@@ -44,6 +46,17 @@ public class User implements UserDetails {
 
     @Column(length = 20)
     private String phone;
+
+    /** Opt-in to being shown offers on the same kind of product from a
+     * different brand (e.g. Elite toilet paper when the user buys Higienol). */
+    @Column(name = "alternative_brands_enabled", nullable = false)
+    @Builder.Default
+    private boolean alternativeBrandsEnabled = true;
+
+    /** Search radius (km) used when listing nearby stores on the map. */
+    @Column(name = "store_search_radius_km", nullable = false)
+    @Builder.Default
+    private int storeSearchRadiusKm = 5;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default

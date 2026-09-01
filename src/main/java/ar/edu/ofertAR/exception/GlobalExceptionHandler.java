@@ -18,8 +18,8 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import java.util.HashMap;
 import java.util.Map;
 
-@RestControllerAdvice
 @Slf4j
+@RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -89,17 +89,6 @@ public class GlobalExceptionHandler {
         );
     }
 
-    /** Ticket más grande que spring.servlet.multipart.max-file-size. */
-    @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<ApiErrorResponse> handleArchivoGrande(MaxUploadSizeExceededException ex) {
-        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(
-                ApiErrorResponse.builder()
-                        .status(413)
-                        .message("El archivo supera el tamaño máximo permitido")
-                        .build()
-        );
-    }
-
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity.badRequest().body(
@@ -110,12 +99,38 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(OcrException.class)
+    public ResponseEntity<ApiErrorResponse> handleOcrException(OcrException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(
+                ApiErrorResponse.builder()
+                        .status(502)
+                        .message("Error en el servicio de OCR: " + ex.getMessage())
+                        .build()
+        );
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiErrorResponse> handleBadCredentials(BadCredentialsException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
                 ApiErrorResponse.builder()
                         .status(401)
                         .message("Email o contraseña incorrectos")
+                        .build()
+        );
+    }
+
+    /**
+     * Uploading several photos of one long receipt is normal usage and can
+     * legitimately exceed the multipart limits; surfacing that as a generic
+     * 500 gave no clue what went wrong.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleUploadTooLarge(MaxUploadSizeExceededException ex) {
+        log.warn("Subida rechazada por tamaño: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(
+                ApiErrorResponse.builder()
+                        .status(413)
+                        .message("Las imágenes son demasiado grandes. Probá sacar menos fotos o con menor resolución.")
                         .build()
         );
     }
@@ -138,7 +153,9 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleGeneric(Exception ex) {
-        log.error("Error no controlado", ex);
+        // Without this the cause was discarded entirely, which made every 500
+        // impossible to diagnose from the logs.
+        log.error("Error no controlado: {}", ex.getMessage(), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                 ApiErrorResponse.builder()
                         .status(500)
