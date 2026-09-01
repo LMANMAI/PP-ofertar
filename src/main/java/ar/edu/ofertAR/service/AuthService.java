@@ -62,6 +62,7 @@ public class AuthService {
                 .profilePicture(user.getProfilePicture())
                 .address(user.getAddress())
                 .phone(user.getPhone())
+                .alternativeBrandsEnabled(user.isAlternativeBrandsEnabled())
                 .createdAt(user.getCreatedAt())
                 .build();
 
