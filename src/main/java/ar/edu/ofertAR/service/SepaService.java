@@ -426,7 +426,8 @@ public class SepaService {
                         String[] f = line.split("\\|", -1);
                         if (f.length <= descIdx) continue; // línea de cierre/basura
 
-                        if (eanFilter != null && !eanFilter.equals(get(f, cols, "productos_ean"))) continue;
+                        String ean = resolvedEan(f, cols);
+                        if (eanFilter != null && !eanFilter.equals(ean)) continue;
                         if (productoFilter != null
                                 && !normalize(get(f, cols, "productos_descripcion")).contains(productoFilter)
                                 && !normalize(get(f, cols, "productos_marca")).contains(productoFilter)) {
@@ -440,7 +441,7 @@ public class SepaService {
                                 .bandera(bandera)
                                 .sucursalId(get(f, cols, "id_sucursal"))
                                 .productoId(get(f, cols, "id_producto"))
-                                .ean(get(f, cols, "productos_ean"))
+                                .ean(ean)
                                 .descripcion(get(f, cols, "productos_descripcion"))
                                 .marca(get(f, cols, "productos_marca"))
                                 .cantidadPresentacion(get(f, cols, "productos_cantidad_presentacion"))
@@ -507,6 +508,30 @@ public class SepaService {
         Integer idx = cols.get(col);
         if (idx == null || idx >= fields.length) return "";
         return fields[idx].trim();
+    }
+
+    /**
+     * EAN de la fila. El dataset actual ya no publica el código en
+     * {@code productos_ean} (es un flag 1/0): el EAN real viene en
+     * {@code id_producto} (13 dígitos). En datasets viejos {@code productos_ean}
+     * sí era el EAN, así que se toma el primero que parezca un código de barras.
+     */
+    private String resolvedEan(String[] fields, Map<String, Integer> cols) {
+        String ean = get(fields, cols, "productos_ean");
+        if (plausibleEan(ean)) return ean;
+        ean = get(fields, cols, "id_producto");
+        return plausibleEan(ean) ? ean : null;
+    }
+
+    /** EAN8 (8), EAN13 (13) o GTIN-14 (14): solo dígitos. */
+    private static boolean plausibleEan(String ean) {
+        if (ean == null) return false;
+        String t = ean.trim();
+        if (t.length() < 8 || t.length() > 14) return false;
+        for (int i = 0; i < t.length(); i++) {
+            if (!Character.isDigit(t.charAt(i))) return false;
+        }
+        return true;
     }
 
     private BigDecimal toDecimal(String value) {
