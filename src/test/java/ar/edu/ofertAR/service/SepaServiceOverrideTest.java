@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.file.Path;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -15,13 +17,14 @@ class SepaServiceOverrideTest {
     @DisplayName("archivo local seteado resuelve el recurso sin tocar CKAN")
     void archivoLocalResuelveSinCkan() {
         SepaService sepa = new SepaService();
-        ReflectionTestUtils.setField(sepa, "resourceFileOverride", "/sepa/sepa_lunes.zip");
+        String overridePath = Path.of("/sepa/sepa_lunes.zip").toString();
+        ReflectionTestUtils.setField(sepa, "resourceFileOverride", overridePath);
         ReflectionTestUtils.setField(sepa, "resourceFechaOverride", "2026-08-31");
 
         SepaService.SepaResource recurso = sepa.resolverRecurso(null);
 
         assertEquals("2026-08-31", recurso.fecha());
-        assertEquals("file:///sepa/sepa_lunes.zip", recurso.url());
+        assertEquals(Path.of(overridePath).toUri().toString(), recurso.url());
     }
 
     @Test

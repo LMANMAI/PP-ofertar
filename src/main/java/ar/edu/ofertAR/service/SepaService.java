@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -27,6 +26,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -37,7 +37,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
-import java.util.zip.ZipInputStream;
 
 /**
  * Servicio SEPA "Precios Claros" (datos.produccion.gob.ar/dataset/sepa-precios).
@@ -224,7 +223,7 @@ public class SepaService {
     private Optional<SepaResource> resolvedOverride() {
         String fuente;
         if (resourceFileOverride != null && !resourceFileOverride.isBlank()) {
-            fuente = "file://" + resourceFileOverride;
+            fuente = Path.of(resourceFileOverride).toUri().toString();
         } else if (resourceUrlOverride != null && !resourceUrlOverride.isBlank()) {
             fuente = resourceUrlOverride;
         } else {
@@ -362,11 +361,19 @@ public class SepaService {
                 throw new IOException("El zip descargado no contiene zips internos de comercios");
             }
             for (ZipEntry entry : entries) {
-                byte[] innerZip;
-                try (InputStream in = zipFile.getInputStream(entry)) {
-                    innerZip = in.readAllBytes();
+                // Se vuelca el zip interno a un archivo temporal y se lee con
+                // ZipFile: algunos zips internos del dataset usan ZIP64 y
+                // ZipInputStream (streaming) no lo soporta (rompe con
+                // "invalid entry compressed size (expected 4294967295...)").
+                Path tmp = Files.createTempFile("sepa-inner-", ".zip");
+                try {
+                    try (InputStream in = zipFile.getInputStream(entry)) {
+                        Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
+                    }
+                    processInnerZip(tmp, comercioFilter, productoFilter, eanFilter, consumer);
+                } finally {
+                    Files.deleteIfExists(tmp);
                 }
-                processInnerZip(innerZip, comercioFilter, productoFilter, eanFilter, consumer);
             }
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
@@ -374,95 +381,112 @@ public class SepaService {
         }
     }
 
-    private void processInnerZip(byte[] innerZip, String comercioFilter, String productoFilter,
+    private void processInnerZip(Path innerZipPath, String comercioFilter, String productoFilter,
                                  String eanFilter, Consumer<SepaPrecioResponse> consumer) throws IOException {
-        // Primera pasada: metadata del comercio (comercio.csv es chico)
-        Map<String, String> comercioInfo = readComercioCsv(innerZip);
-
-        String razonSocial = comercioInfo.getOrDefault("comercio_razon_social", "");
-        String bandera = comercioInfo.getOrDefault("comercio_bandera_nombre", "");
-        String cuit = comercioInfo.getOrDefault("comercio_cuit", "");
-        String idComercio = comercioInfo.getOrDefault("id_comercio", "");
-
-        if (comercioFilter != null
-                && !normalize(razonSocial).contains(comercioFilter)
-                && !normalize(bandera).contains(comercioFilter)
-                && !cuit.equals(comercioFilter)
-                && !idComercio.equals(comercioFilter)) {
-            return; // este comercio no interesa: no parseamos sus productos
+        if (Files.size(innerZipPath) == 0) {
+            return; // hay comercios sin datos en el dataset (zip interno vacío)
         }
+        try (ZipFile zipFile = new ZipFile(innerZipPath.toFile())) {
+            // Primera pasada: metadata del comercio (comercio.csv es chico)
+            Map<String, String> comercioInfo = readComercioCsv(zipFile);
 
-        // Segunda pasada: productos.csv en streaming
-        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(innerZip))) {
-            ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
-                if (!entry.getName().toLowerCase(Locale.ROOT).contains("productos")) continue;
+            String razonSocial = comercioInfo.getOrDefault("comercio_razon_social", "");
+            String bandera = comercioInfo.getOrDefault("comercio_bandera_nombre", "");
+            String cuit = comercioInfo.getOrDefault("comercio_cuit", "");
+            String idComercio = comercioInfo.getOrDefault("id_comercio", "");
 
-                BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(zis, StandardCharsets.UTF_8));
-                String headerLine = reader.readLine();
-                if (headerLine == null) continue;
-                Map<String, Integer> cols = headerIndex(headerLine);
-                Integer descIdx = cols.get("productos_descripcion");
-                if (descIdx == null) continue; // no es el productos.csv esperado
+            if (comercioFilter != null
+                    && !normalize(razonSocial).contains(comercioFilter)
+                    && !normalize(bandera).contains(comercioFilter)
+                    && !cuit.equals(comercioFilter)
+                    && !idComercio.equals(comercioFilter)) {
+                return; // este comercio no interesa: no parseamos sus productos
+            }
 
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String[] f = line.split("\\|", -1);
-                    if (f.length <= descIdx) continue; // línea de cierre/basura
+            // Segunda pasada: productos.csv en streaming
+            Enumeration<? extends ZipEntry> en = zipFile.entries();
+            while (en.hasMoreElements()) {
+                ZipEntry entry = en.nextElement();
+                if (entry.isDirectory()
+                        || !entry.getName().toLowerCase(Locale.ROOT).contains("productos")) {
+                    continue;
+                }
 
-                    if (eanFilter != null && !eanFilter.equals(get(f, cols, "productos_ean"))) continue;
-                    if (productoFilter != null
-                            && !normalize(get(f, cols, "productos_descripcion")).contains(productoFilter)
-                            && !normalize(get(f, cols, "productos_marca")).contains(productoFilter)) {
-                        continue;
+                try (InputStream is = zipFile.getInputStream(entry);
+                     BufferedReader reader = new BufferedReader(
+                             new InputStreamReader(is, StandardCharsets.UTF_8))) {
+                    String headerLine = reader.readLine();
+                    if (headerLine == null) continue;
+                    Map<String, Integer> cols = headerIndex(headerLine);
+                    Integer descIdx = cols.get("productos_descripcion");
+                    if (descIdx == null) continue; // no es el productos.csv esperado
+
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        String[] f = line.split("\\|", -1);
+                        if (f.length <= descIdx) continue; // línea de cierre/basura
+
+                        if (eanFilter != null && !eanFilter.equals(get(f, cols, "productos_ean"))) continue;
+                        if (productoFilter != null
+                                && !normalize(get(f, cols, "productos_descripcion")).contains(productoFilter)
+                                && !normalize(get(f, cols, "productos_marca")).contains(productoFilter)) {
+                            continue;
+                        }
+
+                        consumer.accept(SepaPrecioResponse.builder()
+                                .comercioId(idComercio.isBlank() ? get(f, cols, "id_comercio") : idComercio)
+                                .comercioCuit(cuit)
+                                .comercioRazonSocial(razonSocial)
+                                .bandera(bandera)
+                                .sucursalId(get(f, cols, "id_sucursal"))
+                                .productoId(get(f, cols, "id_producto"))
+                                .ean(get(f, cols, "productos_ean"))
+                                .descripcion(get(f, cols, "productos_descripcion"))
+                                .marca(get(f, cols, "productos_marca"))
+                                .cantidadPresentacion(get(f, cols, "productos_cantidad_presentacion"))
+                                .unidadMedidaPresentacion(get(f, cols, "productos_unidad_medida_presentacion"))
+                                .precioLista(toDecimal(get(f, cols, "productos_precio_lista")))
+                                .precioReferencia(toDecimal(get(f, cols, "productos_precio_referencia")))
+                                .unidadMedidaReferencia(get(f, cols, "productos_unidad_medida_referencia"))
+                                .precioPromo1(toDecimal(get(f, cols, "productos_precio_unitario_promo1")))
+                                .leyendaPromo1(get(f, cols, "productos_leyenda_promo1"))
+                                .precioPromo2(toDecimal(get(f, cols, "productos_precio_unitario_promo2")))
+                                .leyendaPromo2(get(f, cols, "productos_leyenda_promo2"))
+                                .build());
                     }
-
-                    consumer.accept(SepaPrecioResponse.builder()
-                            .comercioId(idComercio.isBlank() ? get(f, cols, "id_comercio") : idComercio)
-                            .comercioCuit(cuit)
-                            .comercioRazonSocial(razonSocial)
-                            .bandera(bandera)
-                            .sucursalId(get(f, cols, "id_sucursal"))
-                            .productoId(get(f, cols, "id_producto"))
-                            .ean(get(f, cols, "productos_ean"))
-                            .descripcion(get(f, cols, "productos_descripcion"))
-                            .marca(get(f, cols, "productos_marca"))
-                            .cantidadPresentacion(get(f, cols, "productos_cantidad_presentacion"))
-                            .unidadMedidaPresentacion(get(f, cols, "productos_unidad_medida_presentacion"))
-                            .precioLista(toDecimal(get(f, cols, "productos_precio_lista")))
-                            .precioReferencia(toDecimal(get(f, cols, "productos_precio_referencia")))
-                            .unidadMedidaReferencia(get(f, cols, "productos_unidad_medida_referencia"))
-                            .precioPromo1(toDecimal(get(f, cols, "productos_precio_unitario_promo1")))
-                            .leyendaPromo1(get(f, cols, "productos_leyenda_promo1"))
-                            .precioPromo2(toDecimal(get(f, cols, "productos_precio_unitario_promo2")))
-                            .leyendaPromo2(get(f, cols, "productos_leyenda_promo2"))
-                            .build());
                 }
             }
         }
     }
 
-    private Map<String, String> readComercioCsv(byte[] innerZip) throws IOException {
+    private Map<String, String> readComercioCsv(ZipFile zipFile) throws IOException {
         Map<String, String> info = new HashMap<>();
-        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(innerZip))) {
-            ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
-                String name = entry.getName().toLowerCase(Locale.ROOT);
-                if (!name.contains("comercio") || name.contains("sucursal")) continue;
-
-                BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(zis, StandardCharsets.UTF_8));
-                String headerLine = reader.readLine();
-                String dataLine = reader.readLine();
-                if (headerLine == null || dataLine == null) continue;
-
-                String[] headers = headerLine.split("\\|", -1);
-                String[] values = dataLine.split("\\|", -1);
-                for (int i = 0; i < headers.length && i < values.length; i++) {
-                    info.put(headers[i].trim().toLowerCase(Locale.ROOT), values[i].trim());
-                }
+        ZipEntry comercio = null;
+        Enumeration<? extends ZipEntry> en = zipFile.entries();
+        while (en.hasMoreElements()) {
+            ZipEntry e = en.nextElement();
+            if (e.isDirectory()) continue;
+            String name = e.getName().toLowerCase(Locale.ROOT);
+            if (name.contains("comercio") && !name.contains("sucursal")) {
+                comercio = e;
+                break;
+            }
+        }
+        if (comercio == null) {
+            return info;
+        }
+        try (InputStream is = zipFile.getInputStream(comercio);
+             BufferedReader reader = new BufferedReader(
+                     new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            String headerLine = reader.readLine();
+            String dataLine = reader.readLine();
+            if (headerLine == null || dataLine == null) {
                 return info;
+            }
+            String[] headers = headerLine.split("\\|", -1);
+            String[] values = dataLine.split("\\|", -1);
+            for (int i = 0; i < headers.length && i < values.length; i++) {
+                info.put(headers[i].trim().toLowerCase(Locale.ROOT), values[i].trim());
             }
         }
         return info;
