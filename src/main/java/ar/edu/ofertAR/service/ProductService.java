@@ -75,6 +75,7 @@ public class ProductService {
                             .lastPaidAt(g.lastPaidAt)
                             .campaignOffers(match.campaignOffers().stream()
                                     .map(c -> RecurringProductResponse.CampaignOffer.builder()
+                                            .offerId(c.externalId() != null ? "campaign:" + c.externalId() : null)
                                             .retailerName(c.retailerName())
                                             .province(c.province())
                                             .legalText(c.legalText())

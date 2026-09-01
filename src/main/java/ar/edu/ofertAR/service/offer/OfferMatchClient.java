@@ -126,6 +126,7 @@ public class OfferMatchClient {
             if (!(entry instanceof Map)) continue;
             Map<String, Object> m = (Map<String, Object>) entry;
             out.add(new CampaignOffer(
+                    (String) m.get("externalId"),
                     (String) m.get("retailerName"),
                     (String) m.get("province"),
                     (String) m.get("legalText"),
@@ -177,6 +178,10 @@ public class OfferMatchClient {
     /** A regional campaign promotion (the /promociones creatives), which unlike
      * a catalog price has a validity window and legal terms attached. */
     public record CampaignOffer(
+            /** The promotion's own id. The offers feed keys the same promotion
+             * as "campaign:<externalId>", which is what lets the app open this
+             * match in the offer detail instead of retelling it in a card. */
+            String externalId,
             String retailerName,
             String province,
             String legalText,

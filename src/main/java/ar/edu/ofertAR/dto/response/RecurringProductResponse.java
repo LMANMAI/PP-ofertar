@@ -71,6 +71,10 @@ public class RecurringProductResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class CampaignOffer {
+        /** Id of the promotion in the offers feed, as "campaign:<externalId>",
+         * so the app can open this promotion's full detail — legal text and
+         * all — instead of showing a truncated copy of it here. */
+        private String offerId;
         private String retailerName;
         private String province;
         private String legalText;
