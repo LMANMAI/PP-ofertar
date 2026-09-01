@@ -39,3 +39,19 @@ build/
 
 ### VS Code ###
 .vscode/
+<<<<<<< HEAD
+=======
+
+### Skills ###
+.agents
+skills-lock.json
+
+### Environment ###
+.env
+.env.local
+
+.codegraph
+
+### Eclipse bin ###
+bin/
+>>>>>>> 9e6f6d8 (Merge pull request #6 from LMANMAI/feature/savings-recognition)
