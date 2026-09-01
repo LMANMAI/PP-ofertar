@@ -228,10 +228,11 @@ public class ProductoImagenService {
         boolean huboError = false;
         for (ImagenProvider provider : cadena) {
             try {
-                Optional<String> url = provider.buscarImagen(normalizado);
-                if (url.isPresent()) {
-                    guardar(normalizado, url.get(), provider.nombre(), EstadoImagen.OK, intentosPrevios);
-                    return url;
+                Optional<ProductoExterno> externo = provider.buscar(normalizado);
+                if (externo.isPresent() && externo.get().tieneImagen()) {
+                    String url = externo.get().imagenUrl();
+                    guardar(normalizado, url, provider.nombre(), EstadoImagen.OK, intentosPrevios);
+                    return Optional.of(url);
                 }
             } catch (ImagenProviderException e) {
                 huboError = true;
@@ -244,6 +245,50 @@ public class ProductoImagenService {
         EstadoImagen estado = huboError ? EstadoImagen.ERROR : EstadoImagen.NOT_FOUND;
         guardar(normalizado, null, null, estado, intentosPrevios + 1);
         return Optional.empty();
+    }
+
+    /**
+     * Datos del producto según la cadena externa, para cuando el EAN escaneado
+     * no está en el snapshot de SEPA.
+     *
+     * <p>Esta es la ÚNICA consulta externa que corre dentro de un request de
+     * usuario, y es deliberado: la persona acaba de apuntar la cámara a un
+     * código y está esperando una respuesta, así que devolverle el nombre y la
+     * foto es mejor que un "no encontrado" seco. Es un solo EAN y pasa por el
+     * mismo throttle, así que no genera ráfaga. Si encuentra imagen, la
+     * persiste de paso.
+     */
+    public Optional<ProductoExterno> buscarExterno(String ean) {
+        String normalizado = normalizarEan(ean);
+        if (normalizado == null || !enabled) {
+            return Optional.empty();
+        }
+        for (ImagenProvider provider : cadena) {
+            try {
+                Optional<ProductoExterno> externo = provider.buscar(normalizado);
+                if (externo.isPresent() && externo.get().tieneDatos()) {
+                    if (externo.get().tieneImagen()) {
+                        guardar(normalizado, externo.get().imagenUrl(), provider.nombre(),
+                                EstadoImagen.OK, 0);
+                    }
+                    return externo;
+                }
+            } catch (ImagenProviderException e) {
+                log.debug("Proveedor {} falló para {}: {}", provider.nombre(), normalizado, e.getMessage());
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** URL de imagen ya resuelta para un EAN, sin consultar a nadie. */
+    public Optional<String> imagenGuardada(String ean) {
+        String normalizado = normalizarEan(ean);
+        if (normalizado == null) {
+            return Optional.empty();
+        }
+        return repository.findById(normalizado)
+                .filter(i -> i.getEstado() == EstadoImagen.OK)
+                .map(ProductoImagen::getUrl);
     }
 
     private void guardar(String ean, String url, String fuente, EstadoImagen estado, int intentos) {

@@ -55,9 +55,9 @@ public class OpenFoodFactsImagenProvider implements ImagenProvider {
     }
 
     @Override
-    public Optional<String> buscarImagen(String ean) throws ImagenProviderException {
+    public Optional<ProductoExterno> buscar(String ean) throws ImagenProviderException {
         String url = String.format(urlTemplate, ean)
-                + "?fields=code,image_front_url,image_front_small_url,image_url";
+                + "?fields=code,product_name,brands,image_front_url,image_front_small_url,image_url";
         try {
             throttle().esperarTurno();
 
@@ -83,14 +83,23 @@ public class OpenFoodFactsImagenProvider implements ImagenProvider {
                 return Optional.empty();
             }
             JsonNode producto = root.path("product");
+
+            String imagen = null;
             for (String campo : new String[]{"image_front_url", "image_url", "image_front_small_url"}) {
                 String valor = producto.path(campo).asText("");
                 if (!valor.isBlank()) {
-                    return Optional.of(valor);
+                    imagen = valor;
+                    break;
                 }
             }
-            // El producto existe pero nadie le sacó foto todavía.
-            return Optional.empty();
+
+            // El producto puede existir sin foto: igual sirve para mostrar el
+            // nombre cuando alguien escanea un EAN que SEPA no tiene.
+            ProductoExterno externo = new ProductoExterno(
+                    blankANull(producto.path("product_name").asText("")),
+                    blankANull(producto.path("brands").asText("")),
+                    imagen);
+            return externo.tieneDatos() ? Optional.of(externo) : Optional.empty();
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -98,6 +107,10 @@ public class OpenFoodFactsImagenProvider implements ImagenProvider {
         } catch (IOException e) {
             throw new ImagenProviderException("Fallo consultando OFF para " + ean + ": " + e.getMessage(), e);
         }
+    }
+
+    private static String blankANull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
     }
 
     private synchronized Throttle throttle() {

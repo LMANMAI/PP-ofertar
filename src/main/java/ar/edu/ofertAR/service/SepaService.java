@@ -127,6 +127,15 @@ public class SepaService {
         }
     }
 
+    /**
+     * Resuelve el recurso (día/fecha/url) sin descargar nada.
+     * El snapshot lo necesita ANTES de empezar a volcar filas, porque la fecha
+     * del dataset es parte de cada fila que inserta.
+     */
+    public SepaResource resolverRecurso(String dia) {
+        return resolveResource(dia);
+    }
+
     // ── 1. Resolver recurso vía API CKAN ─────────────────────────────
 
     private SepaResource resolveResource(String dia) {

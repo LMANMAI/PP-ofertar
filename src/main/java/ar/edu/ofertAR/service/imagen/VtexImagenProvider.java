@@ -58,7 +58,7 @@ public class VtexImagenProvider implements ImagenProvider {
     }
 
     @Override
-    public Optional<String> buscarImagen(String ean) throws ImagenProviderException {
+    public Optional<ProductoExterno> buscar(String ean) throws ImagenProviderException {
         if (!enabled || hosts == null || hosts.isEmpty()) {
             return Optional.empty();
         }
@@ -66,9 +66,9 @@ public class VtexImagenProvider implements ImagenProvider {
         int fallos = 0;
         for (String host : hosts) {
             try {
-                Optional<String> imagen = consultarHost(host.trim(), ean);
-                if (imagen.isPresent()) {
-                    return imagen;
+                Optional<ProductoExterno> encontrado = consultarHost(host.trim(), ean);
+                if (encontrado.isPresent()) {
+                    return encontrado;
                 }
             } catch (ImagenProviderException e) {
                 // Un host caído no invalida a los demás: seguimos con el siguiente.
@@ -85,7 +85,7 @@ public class VtexImagenProvider implements ImagenProvider {
         return Optional.empty();
     }
 
-    private Optional<String> consultarHost(String host, String ean) throws ImagenProviderException {
+    private Optional<ProductoExterno> consultarHost(String host, String ean) throws ImagenProviderException {
         String url = "https://" + host
                 + "/api/catalog_system/pub/products/search?fq=alternateIds_Ean:" + ean;
         try {
@@ -114,7 +114,10 @@ public class VtexImagenProvider implements ImagenProvider {
                     for (JsonNode imagen : item.path("images")) {
                         String imageUrl = imagen.path("imageUrl").asText("");
                         if (!imageUrl.isBlank()) {
-                            return Optional.of(imageUrl);
+                            return Optional.of(new ProductoExterno(
+                                    blankANull(producto.path("productName").asText("")),
+                                    blankANull(producto.path("brand").asText("")),
+                                    imageUrl));
                         }
                     }
                 }
@@ -127,6 +130,10 @@ public class VtexImagenProvider implements ImagenProvider {
         } catch (IOException e) {
             throw new ImagenProviderException(e.getMessage(), e);
         }
+    }
+
+    private static String blankANull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
     }
 
     private synchronized Throttle throttle() {

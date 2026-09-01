@@ -52,6 +52,14 @@ public class SepaSnapshotService {
     private static final String TABLA_STAGING = "sepa_producto_staging";
     private static final String TABLA_VIEJA = "sepa_producto_old";
 
+    private static final String TABLA_COM = "sepa_precio_comercio";
+    private static final String TABLA_COM_STAGING = "sepa_precio_comercio_staging";
+    private static final String TABLA_COM_VIEJA = "sepa_precio_comercio_old";
+
+    private static final String INSERT_COMERCIO = "INSERT INTO " + TABLA_COM_STAGING
+            + " (ean, comercio_id, bandera, razon_social, precio_minimo, precio_maximo, "
+            + "cantidad_sucursales, fecha_dataset) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
     private final SepaService sepaService;
     private final JdbcTemplate jdbcTemplate;
 
@@ -69,6 +77,7 @@ public class SepaSnapshotService {
     private final AtomicBoolean syncing = new AtomicBoolean(false);
     private final AtomicLong filasProcesadas = new AtomicLong();
     private final AtomicLong productosInsertados = new AtomicLong();
+    private final AtomicLong preciosComercioInsertados = new AtomicLong();
     private final AtomicReference<SepaSyncEstadoResponse> estado = new AtomicReference<>(
             SepaSyncEstadoResponse.builder().estado(SepaSyncEstadoResponse.Estado.IDLE).build());
 
@@ -184,8 +193,16 @@ public class SepaSnapshotService {
         long start = System.currentTimeMillis();
         filasProcesadas.set(0);
         productosInsertados.set(0);
+        preciosComercioInsertados.set(0);
+
+        // La fecha del dataset se necesita antes de empezar a volcar filas,
+        // porque va en cada INSERT del desglose por comercio.
+        LocalDate fecha = parseFecha(sepaService.resolverRecurso(dia).fecha());
+
+        crearStaging();
 
         Map<String, Agg> byEan = new HashMap<>(1 << 19);
+        AcumuladorComercio acumulador = new AcumuladorComercio(fecha);
 
         SepaService.SepaResource resource = sepaService.scan(dia, null, null, null, p -> {
             filasProcesadas.incrementAndGet();
@@ -195,14 +212,17 @@ public class SepaSnapshotService {
                 return;
             }
             byEan.computeIfAbsent(ean, k -> new Agg(p.descripcion(), p.marca())).add(precio);
+            acumulador.acumular(p, precio);
         });
 
-        LocalDate fecha = parseFecha(resource.fecha());
-        cargarSnapshot(byEan, fecha);
+        acumulador.volcar();   // el último comercio del dataset
+        cargarProductos(byEan, fecha);
+        reconstruirIndices();
+        swap();
 
         long seconds = (System.currentTimeMillis() - start) / 1000;
-        log.info("SEPA snapshot: {} filas -> {} productos en {}s",
-                filasProcesadas.get(), byEan.size(), seconds);
+        log.info("SEPA snapshot: {} filas -> {} productos y {} precios por comercio en {}s",
+                filasProcesadas.get(), byEan.size(), preciosComercioInsertados.get(), seconds);
 
         return SepaSyncResponse.builder()
                 .dia(resource.dia())
@@ -214,12 +234,70 @@ public class SepaSnapshotService {
     }
 
     /**
-     * Carga blue/green: staging -> lotes con commit propio -> RENAME atómico.
-     * En ningún momento la tabla que leen los usuarios queda vacía ni bloqueada.
+     * Acumula el desglose por comercio SIN cargar el dataset entero en memoria.
+     *
+     * <p>El zip de SEPA trae un zip interno por comercio, así que las filas
+     * llegan agrupadas: cuando cambia el id_comercio sabemos que el anterior
+     * terminó y lo volcamos a la staging. La memoria queda acotada a UN
+     * comercio por vez —decenas de miles de EANs— en vez de crecer con el
+     * producto de comercios por productos.
      */
-    private void cargarSnapshot(Map<String, Agg> byEan, LocalDate fecha) {
-        crearStaging();
+    private final class AcumuladorComercio {
 
+        private final LocalDate fecha;
+        private final Map<String, Agg> porEan = new HashMap<>(1 << 16);
+        private String comercioId;
+        private String bandera;
+        private String razonSocial;
+
+        AcumuladorComercio(LocalDate fecha) {
+            this.fecha = fecha;
+        }
+
+        void acumular(ar.edu.ofertAR.dto.response.SepaPrecioResponse p, BigDecimal precio) {
+            String id = p.comercioId() == null ? "" : p.comercioId();
+            if (comercioId != null && !comercioId.equals(id)) {
+                volcar();
+            }
+            comercioId = id;
+            bandera = p.bandera();
+            razonSocial = p.comercioRazonSocial();
+            porEan.computeIfAbsent(p.ean(), k -> new Agg(null, null)).add(precio);
+        }
+
+        void volcar() {
+            if (porEan.isEmpty()) {
+                return;
+            }
+            List<Object[]> batch = new ArrayList<>(batchSize);
+            for (Map.Entry<String, Agg> e : porEan.entrySet()) {
+                Agg a = e.getValue();
+                batch.add(new Object[]{
+                        truncate(e.getKey(), 20),
+                        truncate(comercioId, 20),
+                        truncate(bandera, 255),
+                        truncate(razonSocial, 255),
+                        a.min,
+                        a.max,
+                        a.count,
+                        Date.valueOf(fecha)
+                });
+                if (batch.size() == batchSize) {
+                    insertarLote(INSERT_COMERCIO, batch, preciosComercioInsertados);
+                }
+            }
+            if (!batch.isEmpty()) {
+                insertarLote(INSERT_COMERCIO, batch, preciosComercioInsertados);
+            }
+            porEan.clear();
+        }
+    }
+
+    /**
+     * Vuelca el agregado por EAN a la staging, en lotes con commit propio.
+     * El swap lo hace {@link #swap()} recién cuando las dos tablas están listas.
+     */
+    private void cargarProductos(Map<String, Agg> byEan, LocalDate fecha) {
         String sql = "INSERT INTO " + TABLA_STAGING + " "
                 + "(ean, descripcion, marca, precio_minimo, precio_promedio, precio_maximo, "
                 + "cantidad_ofertas, fecha_dataset) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
@@ -238,15 +316,12 @@ public class SepaSnapshotService {
                     Date.valueOf(fecha)
             });
             if (batch.size() == batchSize) {
-                insertarLote(sql, batch);
+                insertarLote(sql, batch, productosInsertados);
             }
         }
         if (!batch.isEmpty()) {
-            insertarLote(sql, batch);
+            insertarLote(sql, batch, productosInsertados);
         }
-
-        reconstruirIndices();
-        swap();
     }
 
     /**
@@ -254,9 +329,9 @@ public class SepaSnapshotService {
      * frecuentes en vez de uno gigante al final. Entre lotes cedemos IO para
      * que el tráfico de usuarios no sufra.
      */
-    private void insertarLote(String sql, List<Object[]> batch) {
+    private void insertarLote(String sql, List<Object[]> batch, AtomicLong contador) {
         jdbcTemplate.batchUpdate(sql, batch);
-        productosInsertados.addAndGet(batch.size());
+        contador.addAndGet(batch.size());
         batch.clear();
         if (batchPausaMs > 0) {
             try {
@@ -269,25 +344,36 @@ public class SepaSnapshotService {
     }
 
     private void crearStaging() {
-        jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_STAGING);
-        jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_VIEJA);
+        for (String t : new String[]{TABLA_STAGING, TABLA_VIEJA, TABLA_COM_STAGING, TABLA_COM_VIEJA}) {
+            jdbcTemplate.execute("DROP TABLE IF EXISTS " + t);
+        }
         // LIKE copia columnas, tipos, AUTO_INCREMENT e índices de la tabla viva
         jdbcTemplate.execute("CREATE TABLE " + TABLA_STAGING + " LIKE " + TABLA);
+        jdbcTemplate.execute("CREATE TABLE " + TABLA_COM_STAGING + " LIKE " + TABLA_COM);
         // Insertar con los índices secundarios armados cuesta caro: los sacamos
         // y los reconstruimos de una al final. Si falla, seguimos igual.
-        try {
-            jdbcTemplate.execute("ALTER TABLE " + TABLA_STAGING + " DROP INDEX idx_sepa_producto_descripcion");
-        } catch (Exception e) {
-            log.debug("No se pudo soltar el índice de descripción en staging: {}", e.getMessage());
-        }
+        soltarIndice(TABLA_STAGING, "idx_sepa_producto_descripcion");
+        soltarIndice(TABLA_COM_STAGING, "idx_sepa_precio_comercio_ean");
     }
 
     private void reconstruirIndices() {
+        crearIndice(TABLA_STAGING, "idx_sepa_producto_descripcion", "descripcion");
+        crearIndice(TABLA_COM_STAGING, "idx_sepa_precio_comercio_ean", "ean");
+    }
+
+    private void soltarIndice(String tabla, String indice) {
         try {
-            jdbcTemplate.execute("ALTER TABLE " + TABLA_STAGING
-                    + " ADD INDEX idx_sepa_producto_descripcion (descripcion)");
+            jdbcTemplate.execute("ALTER TABLE " + tabla + " DROP INDEX " + indice);
         } catch (Exception e) {
-            log.warn("No se pudo recrear el índice de descripción en staging: {}", e.getMessage());
+            log.debug("No se pudo soltar {} en {}: {}", indice, tabla, e.getMessage());
+        }
+    }
+
+    private void crearIndice(String tabla, String indice, String columnas) {
+        try {
+            jdbcTemplate.execute("ALTER TABLE " + tabla + " ADD INDEX " + indice + " (" + columnas + ")");
+        } catch (Exception e) {
+            log.warn("No se pudo recrear {} en {}: {}", indice, tabla, e.getMessage());
         }
     }
 
@@ -297,11 +383,17 @@ public class SepaSnapshotService {
      * se toma un lock, y dura milisegundos.
      */
     private void swap() {
+        // Un solo RENAME para las dos tablas: nunca se ve un producto con el
+        // agregado nuevo y el desglose viejo, ni al revés.
         jdbcTemplate.execute("RENAME TABLE "
                 + TABLA + " TO " + TABLA_VIEJA + ", "
-                + TABLA_STAGING + " TO " + TABLA);
+                + TABLA_STAGING + " TO " + TABLA + ", "
+                + TABLA_COM + " TO " + TABLA_COM_VIEJA + ", "
+                + TABLA_COM_STAGING + " TO " + TABLA_COM);
         jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_VIEJA);
-        log.info("SEPA snapshot: swap completo, {} productos activos", productosInsertados.get());
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_COM_VIEJA);
+        log.info("SEPA snapshot: swap completo, {} productos y {} precios por comercio activos",
+                productosInsertados.get(), preciosComercioInsertados.get());
     }
 
     private LocalDate parseFecha(String fecha) {
