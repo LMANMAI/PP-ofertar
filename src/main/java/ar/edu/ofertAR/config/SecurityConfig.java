@@ -30,7 +30,12 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
+<<<<<<< HEAD
                 .requestMatchers("/auth/**").permitAll()
+=======
+                .requestMatchers("/auth/**", "/docs", "/docs/**", "/api-docs", "/api-docs/**", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/sepa/**").permitAll()
+>>>>>>> 2090918 (Merge pull request #5 from LMANMAI/feature/getdata_cepa)
                 .anyRequest().authenticated()
             )
             .sessionManagement(session ->
