@@ -1,129 +1,307 @@
 package ar.edu.ofertAR.service;
 
+import ar.edu.ofertAR.dto.response.SepaSyncEstadoResponse;
 import ar.edu.ofertAR.dto.response.SepaSyncResponse;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Date;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Snapshot semanal en DB: agrega el dataset SEPA por EAN (precio min/prom/max)
- * y reemplaza la tabla sepa_producto completa en cada sincronización.
+ * Snapshot semanal en DB: agrega el dataset SEPA por EAN (precio min/prom/max).
+ *
+ * <p><b>Estrategia de escritura (blue/green).</b> La versión anterior hacía
+ * {@code DELETE FROM sepa_producto} + cientos de miles de INSERT dentro de UNA
+ * transacción. Eso produce exactamente el pico que queremos evitar: un undo log
+ * enorme, la tabla bloqueada durante minutos, un solo commit gigante al final y
+ * cero tolerancia a fallas (si explota en el 90%, se pierde todo y la tabla
+ * queda vacía para los usuarios).
+ *
+ * <p>Ahora se carga en una tabla de staging, con commits por lote y una pausa
+ * configurable entre lotes, y recién al final se hace un {@code RENAME TABLE}
+ * atómico. La tabla que leen los usuarios queda intacta y completa durante toda
+ * la carga, y el cambio se ve en un instante.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class SepaSnapshotService {
 
-    private static final int BATCH_SIZE = 2000;
+    private static final String TABLA = "sepa_producto";
+    private static final String TABLA_STAGING = "sepa_producto_staging";
+    private static final String TABLA_VIEJA = "sepa_producto_old";
 
     private final SepaService sepaService;
     private final JdbcTemplate jdbcTemplate;
-    private final TransactionTemplate transactionTemplate;
+
+    /** Filas por INSERT batch. Con rewriteBatchedStatements viaja como un solo statement. */
+    @Value("${sepa.batch-size:1000}")
+    private int batchSize;
+
+    /**
+     * Pausa entre lotes. Es el dial para no comerse la IO de la base:
+     * subilo si el sync compite con tráfico de usuarios, bajalo a 0 en local.
+     */
+    @Value("${sepa.batch-pausa-ms:50}")
+    private long batchPausaMs;
 
     private final AtomicBoolean syncing = new AtomicBoolean(false);
+    private final AtomicLong filasProcesadas = new AtomicLong();
+    private final AtomicLong productosInsertados = new AtomicLong();
+    private final AtomicReference<SepaSyncEstadoResponse> estado = new AtomicReference<>(
+            SepaSyncEstadoResponse.builder().estado(SepaSyncEstadoResponse.Estado.IDLE).build());
+
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "sepa-sync");
+        t.setDaemon(true);
+        return t;
+    });
+
+    @PreDestroy
+    void shutdown() {
+        executor.shutdownNow();
+    }
+
+    // ── API pública ──────────────────────────────────────────────────
 
     /** Carga automática semanal (configurable con sepa.sync-cron). */
     @Scheduled(cron = "${sepa.sync-cron:0 0 3 * * MON}", zone = "America/Argentina/Buenos_Aires")
     public void scheduledSync() {
         try {
-            SepaSyncResponse result = sync(null);
-            log.info("SEPA sync programado OK: {}", result);
-        } catch (Exception e) {
-            log.error("SEPA sync programado falló", e);
+            lanzarAsync(null);
+        } catch (ResponseStatusException e) {
+            log.warn("SEPA sync programado salteado: {}", e.getReason());
         }
     }
 
     /**
-     * Descarga -> descomprime -> agrega por EAN -> reemplaza el snapshot en DB.
-     * Tarda varios minutos (dataset de cientos de MB).
+     * Dispara el sync en background y vuelve enseguida.
+     * El progreso se consulta con {@link #getEstado()}.
+     */
+    public SepaSyncEstadoResponse lanzarAsync(String dia) {
+        if (!syncing.compareAndSet(false, true)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ya hay una sincronización SEPA en curso");
+        }
+        filasProcesadas.set(0);
+        productosInsertados.set(0);
+        estado.set(SepaSyncEstadoResponse.builder()
+                .estado(SepaSyncEstadoResponse.Estado.EN_CURSO)
+                .dia(dia)
+                .inicio(LocalDateTime.now().toString())
+                .build());
+
+        executor.submit(() -> {
+            String inicio = estado.get().inicio();
+            try {
+                SepaSyncResponse resultado = ejecutarSync(dia);
+                estado.set(SepaSyncEstadoResponse.builder()
+                        .estado(SepaSyncEstadoResponse.Estado.OK)
+                        .dia(resultado.dia())
+                        .fechaDataset(resultado.fechaDataset())
+                        .inicio(inicio)
+                        .fin(LocalDateTime.now().toString())
+                        .filasProcesadas(resultado.filasProcesadas())
+                        .productosGuardados(resultado.productosGuardados())
+                        .productosInsertados(resultado.productosGuardados())
+                        .duracionSegundos(resultado.duracionSegundos())
+                        .build());
+                log.info("SEPA sync OK: {}", resultado);
+            } catch (Exception e) {
+                log.error("SEPA sync falló", e);
+                estado.set(SepaSyncEstadoResponse.builder()
+                        .estado(SepaSyncEstadoResponse.Estado.ERROR)
+                        .dia(dia)
+                        .inicio(inicio)
+                        .fin(LocalDateTime.now().toString())
+                        .filasProcesadas(filasProcesadas.get())
+                        .productosInsertados(productosInsertados.get())
+                        .error(e.getMessage())
+                        .build());
+            } finally {
+                syncing.set(false);
+            }
+        });
+
+        return getEstado();
+    }
+
+    /** Estado actual, con contadores en vivo mientras corre. */
+    public SepaSyncEstadoResponse getEstado() {
+        SepaSyncEstadoResponse actual = estado.get();
+        if (actual.estado() != SepaSyncEstadoResponse.Estado.EN_CURSO) {
+            return actual;
+        }
+        return SepaSyncEstadoResponse.builder()
+                .estado(actual.estado())
+                .dia(actual.dia())
+                .inicio(actual.inicio())
+                .filasProcesadas(filasProcesadas.get())
+                .productosInsertados(productosInsertados.get())
+                .build();
+    }
+
+    /**
+     * Sync sincrónico completo. Público para tests y para el uso por CLI;
+     * el camino normal es {@link #lanzarAsync(String)}.
      */
     public SepaSyncResponse sync(String dia) {
         if (!syncing.compareAndSet(false, true)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya hay una sincronización SEPA en curso");
         }
-        long start = System.currentTimeMillis();
         try {
-            Map<String, Agg> byEan = new HashMap<>(1_048_576);
-            AtomicLong rows = new AtomicLong();
-
-            SepaService.SepaResource resource = sepaService.scan(dia, null, null, null, p -> {
-                rows.incrementAndGet();
-                String ean = p.ean();
-                BigDecimal precio = p.precioLista();
-                if (ean == null || ean.isBlank() || precio == null
-                        || precio.signum() <= 0) {
-                    return;
-                }
-                byEan.computeIfAbsent(ean, k -> new Agg(p.descripcion(), p.marca())).add(precio);
-            });
-
-            LocalDate fecha = parseFecha(resource.fecha());
-            replaceSnapshot(byEan, fecha);
-
-            long seconds = (System.currentTimeMillis() - start) / 1000;
-            log.info("SEPA snapshot: {} filas -> {} productos en {}s",
-                    rows.get(), byEan.size(), seconds);
-            return SepaSyncResponse.builder()
-                    .dia(resource.dia())
-                    .fechaDataset(fecha.toString())
-                    .filasProcesadas(rows.get())
-                    .productosGuardados(byEan.size())
-                    .duracionSegundos(seconds)
-                    .build();
+            return ejecutarSync(dia);
         } finally {
             syncing.set(false);
         }
     }
 
-    /** Reemplazo transaccional: DELETE total + batch insert. */
-    private void replaceSnapshot(Map<String, Agg> byEan, LocalDate fecha) {
-        transactionTemplate.executeWithoutResult(status -> {
-            jdbcTemplate.update("DELETE FROM sepa_producto");
+    // ── Implementación ───────────────────────────────────────────────
 
-            String sql = "INSERT INTO sepa_producto "
-                    + "(ean, descripcion, marca, precio_minimo, precio_promedio, precio_maximo, "
-                    + "cantidad_ofertas, fecha_dataset) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+    private SepaSyncResponse ejecutarSync(String dia) {
+        long start = System.currentTimeMillis();
+        filasProcesadas.set(0);
+        productosInsertados.set(0);
 
-            List<Object[]> batch = new ArrayList<>(BATCH_SIZE);
-            for (Map.Entry<String, Agg> e : byEan.entrySet()) {
-                Agg a = e.getValue();
-                batch.add(new Object[]{
-                        truncate(e.getKey(), 20),
-                        truncate(a.descripcion, 500),
-                        truncate(a.marca, 255),
-                        a.min,
-                        a.avg(),
-                        a.max,
-                        a.count,
-                        Date.valueOf(fecha)
-                });
-                if (batch.size() == BATCH_SIZE) {
-                    jdbcTemplate.batchUpdate(sql, batch);
-                    batch.clear();
-                }
+        Map<String, Agg> byEan = new HashMap<>(1 << 19);
+
+        SepaService.SepaResource resource = sepaService.scan(dia, null, null, null, p -> {
+            filasProcesadas.incrementAndGet();
+            String ean = p.ean();
+            BigDecimal precio = p.precioLista();
+            if (ean == null || ean.isBlank() || precio == null || precio.signum() <= 0) {
+                return;
             }
-            if (!batch.isEmpty()) {
-                jdbcTemplate.batchUpdate(sql, batch);
-            }
+            byEan.computeIfAbsent(ean, k -> new Agg(p.descripcion(), p.marca())).add(precio);
         });
+
+        LocalDate fecha = parseFecha(resource.fecha());
+        cargarSnapshot(byEan, fecha);
+
+        long seconds = (System.currentTimeMillis() - start) / 1000;
+        log.info("SEPA snapshot: {} filas -> {} productos en {}s",
+                filasProcesadas.get(), byEan.size(), seconds);
+
+        return SepaSyncResponse.builder()
+                .dia(resource.dia())
+                .fechaDataset(fecha.toString())
+                .filasProcesadas(filasProcesadas.get())
+                .productosGuardados(byEan.size())
+                .duracionSegundos(seconds)
+                .build();
+    }
+
+    /**
+     * Carga blue/green: staging -> lotes con commit propio -> RENAME atómico.
+     * En ningún momento la tabla que leen los usuarios queda vacía ni bloqueada.
+     */
+    private void cargarSnapshot(Map<String, Agg> byEan, LocalDate fecha) {
+        crearStaging();
+
+        String sql = "INSERT INTO " + TABLA_STAGING + " "
+                + "(ean, descripcion, marca, precio_minimo, precio_promedio, precio_maximo, "
+                + "cantidad_ofertas, fecha_dataset) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
+        List<Object[]> batch = new ArrayList<>(batchSize);
+        for (Map.Entry<String, Agg> e : byEan.entrySet()) {
+            Agg a = e.getValue();
+            batch.add(new Object[]{
+                    truncate(e.getKey(), 20),
+                    truncate(a.descripcion, 500),
+                    truncate(a.marca, 255),
+                    a.min,
+                    a.avg(),
+                    a.max,
+                    a.count,
+                    Date.valueOf(fecha)
+            });
+            if (batch.size() == batchSize) {
+                insertarLote(sql, batch);
+            }
+        }
+        if (!batch.isEmpty()) {
+            insertarLote(sql, batch);
+        }
+
+        reconstruirIndices();
+        swap();
+    }
+
+    /**
+     * Cada lote es su propia transacción (autocommit): commits chicos y
+     * frecuentes en vez de uno gigante al final. Entre lotes cedemos IO para
+     * que el tráfico de usuarios no sufra.
+     */
+    private void insertarLote(String sql, List<Object[]> batch) {
+        jdbcTemplate.batchUpdate(sql, batch);
+        productosInsertados.addAndGet(batch.size());
+        batch.clear();
+        if (batchPausaMs > 0) {
+            try {
+                Thread.sleep(batchPausaMs);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Carga del snapshot interrumpida", ie);
+            }
+        }
+    }
+
+    private void crearStaging() {
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_STAGING);
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_VIEJA);
+        // LIKE copia columnas, tipos, AUTO_INCREMENT e índices de la tabla viva
+        jdbcTemplate.execute("CREATE TABLE " + TABLA_STAGING + " LIKE " + TABLA);
+        // Insertar con los índices secundarios armados cuesta caro: los sacamos
+        // y los reconstruimos de una al final. Si falla, seguimos igual.
+        try {
+            jdbcTemplate.execute("ALTER TABLE " + TABLA_STAGING + " DROP INDEX idx_sepa_producto_descripcion");
+        } catch (Exception e) {
+            log.debug("No se pudo soltar el índice de descripción en staging: {}", e.getMessage());
+        }
+    }
+
+    private void reconstruirIndices() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE " + TABLA_STAGING
+                    + " ADD INDEX idx_sepa_producto_descripcion (descripcion)");
+        } catch (Exception e) {
+            log.warn("No se pudo recrear el índice de descripción en staging: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * RENAME TABLE es atómico en MySQL: los lectores ven la tabla vieja o la
+     * nueva, nunca una a medio cargar ni una vacía. Es el único momento en que
+     * se toma un lock, y dura milisegundos.
+     */
+    private void swap() {
+        jdbcTemplate.execute("RENAME TABLE "
+                + TABLA + " TO " + TABLA_VIEJA + ", "
+                + TABLA_STAGING + " TO " + TABLA);
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_VIEJA);
+        log.info("SEPA snapshot: swap completo, {} productos activos", productosInsertados.get());
     }
 
     private LocalDate parseFecha(String fecha) {
