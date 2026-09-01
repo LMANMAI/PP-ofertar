@@ -51,3 +51,11 @@ skills-lock.json
 
 ### Eclipse bin ###
 bin/
+
+### Local tooling / docs (no versionar) ###
+.cursor/
+.gemini/
+AGENTS.md
+GEMINI.md
+opencode.jsonc
+doc/
