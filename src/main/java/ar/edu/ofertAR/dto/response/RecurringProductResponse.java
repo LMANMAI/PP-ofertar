@@ -60,6 +60,11 @@ public class RecurringProductResponse {
          * the size or variety, so the app shows it rather than implying the
          * price is for the exact item on their receipt. */
         private String productName;
+        /** The retailer's photo of that catalog product, or null when it has
+         * none. The app draws it on the recurring-products card and falls back
+         * to its own icon when this is absent, so an older scraper that does
+         * not send it degrades to exactly the previous appearance. */
+        private String imageUrl;
         private BigDecimal price;
         private BigDecimal listPrice;
         private BigDecimal discountPct;

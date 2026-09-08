@@ -90,6 +90,7 @@ public class ProductService {
                                     ? RecurringProductResponse.BestOffer.builder()
                                             .retailerName(match.retailerName())
                                             .productName(match.productName())
+                                            .imageUrl(match.imageUrl())
                                             .price(match.price())
                                             .listPrice(match.listPrice())
                                             .discountPct(match.discountPct())

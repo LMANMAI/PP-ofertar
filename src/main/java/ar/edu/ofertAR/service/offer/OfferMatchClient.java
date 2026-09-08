@@ -73,7 +73,7 @@ public class OfferMatchClient {
             List<CampaignOffer> campaigns = mapCampaigns(result.get("campaignOffers"));
 
             if (best == null) {
-                matches.add(new OfferMatch(matchedBrand, null, null, null, null, null, null, alternatives, campaigns));
+                matches.add(new OfferMatch(matchedBrand, null, null, null, null, null, null, null, alternatives, campaigns));
                 continue;
             }
 
@@ -81,6 +81,7 @@ public class OfferMatchClient {
                     matchedBrand,
                     (String) best.get("retailerName"),
                     (String) best.get("productName"),
+                    (String) best.get("imageUrl"),
                     toBigDecimal(best.get("sellingPrice")),
                     toBigDecimal(best.get("listPrice")),
                     toBigDecimal(best.get("discountPct")),
@@ -207,6 +208,12 @@ public class OfferMatchClient {
              * so a same-brand-but-different-product match is visible instead of
              * silently passing as the price of what they actually bought. */
             String productName,
+            /** The retailer's photo of that same SKU, or null when the catalog
+             * published none. Sits next to {@code productName} because the two
+             * describe the same thing and must never come from different rows:
+             * a photo of one product over the name of another is worse than no
+             * photo at all. Every consumer needs a fallback regardless. */
+            String imageUrl,
             BigDecimal price,
             BigDecimal listPrice,
             BigDecimal discountPct,
@@ -215,7 +222,7 @@ public class OfferMatchClient {
             List<CampaignOffer> campaignOffers
     ) {
         public static OfferMatch none() {
-            return new OfferMatch(null, null, null, null, null, null, null, List.of(), List.of());
+            return new OfferMatch(null, null, null, null, null, null, null, null, List.of(), List.of());
         }
 
         public boolean hasOffer() {
