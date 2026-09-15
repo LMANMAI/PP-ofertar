@@ -92,6 +92,10 @@ class ProductServiceOfferImageTest {
                 new BigDecimal("4290"),
                 new BigDecimal("23.31"),
                 "2da unidad 70%",
+                List.of("2da unidad 70%"),
+                2,
+                null,
+                List.of(),
                 List.of(),
                 List.of()));
 
@@ -117,6 +121,10 @@ class ProductServiceOfferImageTest {
                 new BigDecimal("4290"),
                 new BigDecimal("23.31"),
                 null,
+                List.of(),
+                null,
+                null,
+                List.of(),
                 List.of(),
                 List.of()));
 

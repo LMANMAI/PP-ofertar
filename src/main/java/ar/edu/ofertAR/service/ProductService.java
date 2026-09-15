@@ -95,8 +95,27 @@ public class ProductService {
                                             .listPrice(match.listPrice())
                                             .discountPct(match.discountPct())
                                             .promoLabel(match.promoLabel())
+                                            .promoLabels(match.promoLabels())
+                                            .requiredQuantity(match.requiredQuantity())
+                                            .promoUnitPrice(match.promoUnitPrice())
                                             .build()
                                     : null)
+                            // Outside the bestOffer branch: these products have
+                            // no unit discount by definition, so gating them on
+                            // hasOffer() would drop exactly the promotions the
+                            // user complained about never seeing.
+                            .promoMechanics(match.promoMechanics().stream()
+                                    .map(m -> RecurringProductResponse.PromoMechanic.builder()
+                                            .retailerName(m.retailerName())
+                                            .productName(m.productName())
+                                            .imageUrl(m.imageUrl())
+                                            .unitPrice(m.unitPrice())
+                                            .listPrice(m.listPrice())
+                                            .promoLabels(m.promoLabels())
+                                            .requiredQuantity(m.requiredQuantity())
+                                            .promoUnitPrice(m.promoUnitPrice())
+                                            .build())
+                                    .toList())
                             .alternativeOffers(match.alternativeOffers().stream()
                                     .map(a -> RecurringProductResponse.AlternativeOffer.builder()
                                             .productName(a.productName())
