@@ -52,7 +52,7 @@ class SepaServiceZIP64Test {
     }
 
     private static SepaService newSepa(Path zip) {
-        SepaService sepa = new SepaService();
+        SepaService sepa = new SepaService(new SepaComercioNombres());
         ReflectionTestUtils.setField(sepa, "resourceFileOverride", zip.toString());
         ReflectionTestUtils.setField(sepa, "resourceFechaOverride", "2026-08-31");
         return sepa;

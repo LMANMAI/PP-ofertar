@@ -8,6 +8,7 @@ import ar.edu.ofertAR.dto.response.SepaSyncEstadoResponse;
 import ar.edu.ofertAR.model.SepaProducto;
 import ar.edu.ofertAR.repository.SepaPrecioComercioRepository;
 import ar.edu.ofertAR.repository.SepaProductoRepository;
+import ar.edu.ofertAR.service.SepaComercioNombres;
 import ar.edu.ofertAR.service.SepaService;
 import ar.edu.ofertAR.service.SepaSnapshotService;
 import ar.edu.ofertAR.service.imagen.ProductoExterno;
@@ -41,6 +42,7 @@ public class SepaController {
 
     private final SepaService sepaService;
     private final SepaSnapshotService sepaSnapshotService;
+    private final SepaComercioNombres comercioNombres;
     private final SepaProductoRepository sepaProductoRepository;
     private final SepaPrecioComercioRepository sepaPrecioComercioRepository;
     private final ProductoImagenService productoImagenService;
@@ -126,7 +128,8 @@ public class SepaController {
         List<ComercioPrecioResponse> comercios = sepaPrecioComercioRepository
                 .findByEanOrderByPrecioMinimoAsc(p.getEan())
                 .stream()
-                .map(ComercioPrecioResponse::from)
+                .map(c -> ComercioPrecioResponse.from(c)
+                        .withBandera(comercioNombres.nombre(c.getComercioId(), c.getBandera())))
                 .toList();
 
         Map<String, String> imagenes = productoImagenService.imagenesPorEan(List.of(p.getEan()));

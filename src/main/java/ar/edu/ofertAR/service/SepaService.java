@@ -72,6 +72,8 @@ public class SepaService {
     @Value("${sepa.resource-fecha:}")
     private String resourceFechaOverride;
 
+    private final SepaComercioNombres comercioNombres;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -101,7 +103,10 @@ public class SepaService {
                 .size(size)
                 .totalElementos(collector.total)
                 .totalPaginas((collector.total + size - 1) / size)
-                .data(collector.data)
+                .data(collector.data.stream()
+                        .map(r -> r.withBandera(
+                                comercioNombres.nombre(r.comercioId(), r.bandera())))
+                        .toList())
                 .build();
     }
 

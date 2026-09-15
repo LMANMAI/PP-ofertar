@@ -16,7 +16,7 @@ class SepaServiceOverrideTest {
     @Test
     @DisplayName("archivo local seteado resuelve el recurso sin tocar CKAN")
     void archivoLocalResuelveSinCkan() {
-        SepaService sepa = new SepaService();
+        SepaService sepa = new SepaService(new SepaComercioNombres());
         String overridePath = Path.of("/sepa/sepa_lunes.zip").toString();
         ReflectionTestUtils.setField(sepa, "resourceFileOverride", overridePath);
         ReflectionTestUtils.setField(sepa, "resourceFechaOverride", "2026-08-31");
@@ -30,7 +30,7 @@ class SepaServiceOverrideTest {
     @Test
     @DisplayName("la fecha se extrae del nombre del archivo cuando trae YYYY-MM-DD")
     void fechaSeExtraeDelNombre() {
-        SepaService sepa = new SepaService();
+        SepaService sepa = new SepaService(new SepaComercioNombres());
         ReflectionTestUtils.setField(sepa, "resourceFileOverride", "/sepa/sepa_2026-08-31.zip");
 
         SepaService.SepaResource recurso = sepa.resolverRecurso(null);
@@ -41,7 +41,7 @@ class SepaServiceOverrideTest {
     @Test
     @DisplayName("sin fecha configurable ni en el nombre, falla con error claro")
     void sinFechaLanzaErrorClaro() {
-        SepaService sepa = new SepaService();
+        SepaService sepa = new SepaService(new SepaComercioNombres());
         ReflectionTestUtils.setField(sepa, "resourceFileOverride", "/sepa/sepa_lunes.zip");
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> sepa.resolverRecurso(null));
@@ -52,7 +52,7 @@ class SepaServiceOverrideTest {
     @Test
     @DisplayName("una URL http como espejo se respeta tal cual")
     void urlHttpComoEspejo() {
-        SepaService sepa = new SepaService();
+        SepaService sepa = new SepaService(new SepaComercioNombres());
         ReflectionTestUtils.setField(sepa, "resourceUrlOverride",
                 "https://mirror.example/sepa_2026-08-31.zip");
 

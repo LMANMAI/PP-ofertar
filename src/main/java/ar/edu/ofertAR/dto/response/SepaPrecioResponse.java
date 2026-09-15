@@ -24,4 +24,14 @@ public record SepaPrecioResponse(
         String leyendaPromo1,
         BigDecimal precioPromo2,
         String leyendaPromo2
-) {}
+) {
+    /** Copia con la bandera reemplazada (para nombres de cadena curados). */
+    public SepaPrecioResponse withBandera(String bandera) {
+        return new SepaPrecioResponse(
+                comercioId, comercioCuit, comercioRazonSocial, bandera,
+                sucursalId, productoId, ean, descripcion, marca,
+                cantidadPresentacion, unidadMedidaPresentacion, precioLista,
+                precioReferencia, unidadMedidaReferencia, precioPromo1,
+                leyendaPromo1, precioPromo2, leyendaPromo2);
+    }
+}
