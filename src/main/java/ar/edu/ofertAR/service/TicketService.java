@@ -242,6 +242,16 @@ public class TicketService {
         log.info("Ticket {} eliminado por el usuario {}", id, user.getEmail());
     }
 
+    @Transactional
+    public void deleteAllTicketsForUser(User user) {
+        List<Ticket> tickets = ticketRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
+        for (Ticket ticket : tickets) {
+            deleteImageFile(ticket.getImagePath());
+        }
+        ticketRepository.deleteAll(tickets);
+        log.info("Eliminados {} tickets del usuario {}", tickets.size(), user.getEmail());
+    }
+
     private void enforceTicketLimit(User user) {
         List<Ticket> tickets = ticketRepository.findByUserIdOrderByCreatedAtAsc(user.getId());
         while (tickets.size() >= maxTicketsPerUser) {

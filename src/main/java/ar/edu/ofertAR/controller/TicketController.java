@@ -59,4 +59,10 @@ public class TicketController {
         ticketService.deleteTicket(id, user);
         return ResponseEntity.noContent().build();
     }
+
+    @DeleteMapping
+    public ResponseEntity<Void> deleteAll(@AuthenticationPrincipal User user) {
+        ticketService.deleteAllTicketsForUser(user);
+        return ResponseEntity.noContent().build();
+    }
 }

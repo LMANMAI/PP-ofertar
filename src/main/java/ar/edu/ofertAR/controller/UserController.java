@@ -1,6 +1,7 @@
 package ar.edu.ofertAR.controller;
 
 import ar.edu.ofertAR.dto.request.ChangePasswordRequest;
+import ar.edu.ofertAR.dto.request.DeleteAccountRequest;
 import ar.edu.ofertAR.dto.request.UpdateProfileRequest;
 import ar.edu.ofertAR.dto.response.AuthResponse;
 import ar.edu.ofertAR.dto.response.UserProfileResponse;
@@ -38,6 +39,15 @@ public class UserController {
             @Valid @RequestBody ChangePasswordRequest request
     ) {
         userService.changePassword(user, request);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteAccount(
+            @AuthenticationPrincipal User user,
+            @Valid @RequestBody DeleteAccountRequest request
+    ) {
+        userService.deleteAccount(user, request);
         return ResponseEntity.noContent().build();
     }
 }

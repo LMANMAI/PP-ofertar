@@ -1,21 +1,26 @@
 package ar.edu.ofertAR.service;
 
 import ar.edu.ofertAR.dto.request.ChangePasswordRequest;
+import ar.edu.ofertAR.dto.request.DeleteAccountRequest;
 import ar.edu.ofertAR.dto.request.UpdateProfileRequest;
 import ar.edu.ofertAR.dto.response.AuthResponse;
 import ar.edu.ofertAR.dto.response.UserProfileResponse;
 import ar.edu.ofertAR.model.User;
+import ar.edu.ofertAR.repository.FavoriteStoreChainRepository;
 import ar.edu.ofertAR.repository.UserRepository;
 import ar.edu.ofertAR.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 public class UserService {
 
     private final UserRepository userRepository;
+    private final FavoriteStoreChainRepository favoriteStoreChainRepository;
+    private final TicketService ticketService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
@@ -60,6 +65,17 @@ public class UserService {
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
+    }
+
+    @Transactional
+    public void deleteAccount(User user, DeleteAccountRequest request) {
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new IllegalArgumentException("La contraseña es incorrecta");
+        }
+
+        ticketService.deleteAllTicketsForUser(user);
+        favoriteStoreChainRepository.deleteByUserId(user.getId());
+        userRepository.delete(user);
     }
 
     private UserProfileResponse toResponse(User user) {
