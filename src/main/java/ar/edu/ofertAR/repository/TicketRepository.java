@@ -4,6 +4,7 @@ import ar.edu.ofertAR.model.Ticket;
 import ar.edu.ofertAR.model.TicketStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,4 +17,8 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     Optional<Ticket> findByIdAndUserId(Long id, Long userId);
 
     Optional<Ticket> findByUserIdAndTicketIdAndStatus(Long userId, String ticketId, TicketStatus status);
+
+    long countByUserIdAndStatus(Long userId, TicketStatus status);
+
+    boolean existsByUserIdAndCreatedAtAfter(Long userId, LocalDateTime after);
 }

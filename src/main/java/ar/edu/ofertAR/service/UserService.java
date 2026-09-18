@@ -71,6 +71,8 @@ public class UserService {
                 .address(user.getAddress())
                 .phone(user.getPhone())
                 .alternativeBrandsEnabled(user.isAlternativeBrandsEnabled())
+                .referralCode(user.getReferralCode())
+                .points(user.getPoints())
                 .createdAt(user.getCreatedAt())
                 .build();
     }

@@ -26,4 +26,8 @@ public class RegisterRequest {
 
     @Size(max = 20)
     private String phone;
+
+    /** Another user's invite code. Optional — an unknown or self-code is
+     * ignored silently rather than blocking the signup. */
+    private String referralCode;
 }

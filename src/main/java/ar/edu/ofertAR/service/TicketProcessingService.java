@@ -38,6 +38,7 @@ public class TicketProcessingService {
     private final OcrClient ocrClient;
     private final ExecutorService ocrExecutor;
     private final TransactionTemplate transactionTemplate;
+    private final PointsService pointsService;
 
     /** Page images already read off the request, so the upload can return. */
     public record PagePayload(byte[] bytes, String contentType) {}
@@ -175,6 +176,10 @@ public class TicketProcessingService {
         ticketRepository.save(ticket);
         log.info("Ticket {} procesado — {} items de {} paginas, super: {}",
                 ticket.getId(), allItems.size(), pageResults.size(), ticket.getStoreName());
+
+        if (ticket.getStatus() == TicketStatus.PROCESSED) {
+            pointsService.onTicketProcessed(ticket);
+        }
     }
 
     /**
