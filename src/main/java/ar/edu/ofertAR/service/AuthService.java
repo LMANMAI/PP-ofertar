@@ -21,6 +21,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final PointsService pointsService;
 
     public AuthResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
@@ -31,9 +32,15 @@ public class AuthService {
                 .name(request.getName())
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
+<<<<<<< HEAD
+=======
+                .phone(request.getPhone())
+                .referralCode(pointsService.generateUniqueReferralCode())
+>>>>>>> 248bfcb (Merge pull request #9 from LMANMAI/feature/referral-points)
                 .build();
 
         userRepository.save(user);
+        pointsService.applyReferralSignup(user, request.getReferralCode());
 
         String token = jwtService.generateToken(user);
 
@@ -61,6 +68,12 @@ public class AuthService {
                 .profilePicture(user.getProfilePicture())
                 .address(user.getAddress())
                 .phone(user.getPhone())
+<<<<<<< HEAD
+=======
+                .alternativeBrandsEnabled(user.isAlternativeBrandsEnabled())
+                .referralCode(user.getReferralCode())
+                .points(user.getPoints())
+>>>>>>> 248bfcb (Merge pull request #9 from LMANMAI/feature/referral-points)
                 .createdAt(user.getCreatedAt())
                 .build();
 

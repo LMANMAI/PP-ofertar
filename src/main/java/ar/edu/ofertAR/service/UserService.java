@@ -67,6 +67,12 @@ public class UserService {
                 .profilePicture(user.getProfilePicture())
                 .address(user.getAddress())
                 .phone(user.getPhone())
+<<<<<<< HEAD
+=======
+                .alternativeBrandsEnabled(user.isAlternativeBrandsEnabled())
+                .referralCode(user.getReferralCode())
+                .points(user.getPoints())
+>>>>>>> 248bfcb (Merge pull request #9 from LMANMAI/feature/referral-points)
                 .createdAt(user.getCreatedAt())
                 .build();
     }
