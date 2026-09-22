@@ -68,6 +68,7 @@ public class AuthService {
                 .alternativeBrandsEnabled(user.isAlternativeBrandsEnabled())
                 .referralCode(user.getReferralCode())
                 .points(user.getPoints())
+                .offersPushEnabled(user.isOffersPushEnabled())
                 .createdAt(user.getCreatedAt())
                 .build();
 

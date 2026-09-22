@@ -22,5 +22,6 @@ public class UserProfileResponse {
     private boolean alternativeBrandsEnabled;
     private String referralCode;
     private int points;
+    private boolean offersPushEnabled;
     private LocalDateTime createdAt;
 }
