@@ -2,6 +2,7 @@ package ar.edu.ofertAR.service;
 
 import ar.edu.ofertAR.dto.request.RegisterPushTokenRequest;
 import ar.edu.ofertAR.model.PushToken;
+import ar.edu.ofertAR.model.Ticket;
 import ar.edu.ofertAR.model.User;
 import ar.edu.ofertAR.repository.PushTokenRepository;
 import lombok.RequiredArgsConstructor;
@@ -58,6 +59,24 @@ public class PushNotificationService {
     /** Fire-and-forget: queues the send and returns immediately. */
     public void sendToUser(User user, String title, String body, Map<String, String> data) {
         pushNotificationExecutor.submit(() -> sendToUserBlocking(user, title, body, data));
+    }
+
+    public void notifyTicketProcessed(Ticket ticket) {
+        String store = ticket.getStoreName() != null && !ticket.getStoreName().isBlank()
+                ? ticket.getStoreName() : "tu compra";
+        sendToUser(ticket.getUser(), "Ya está tu ticket",
+                "Terminamos de leer el ticket de " + store + ".",
+                Map.of("screen", "ticketDetail", "ticketId", String.valueOf(ticket.getId())));
+    }
+
+    /** Covers every path that leaves a ticket FAILED — OCR/commit blowing up,
+     * a duplicate ticketId, or a page with nothing readable on it — with the
+     * same generic message, since none of those distinctions are actionable
+     * for the person who just scanned it. */
+    public void notifyTicketFailed(Ticket ticket) {
+        sendToUser(ticket.getUser(), "No pudimos leer tu ticket",
+                "Volvé a intentar escanearlo desde la app.",
+                Map.of("screen", "ticketHistory"));
     }
 
     private void sendToUserBlocking(User user, String title, String body, Map<String, String> data) {
