@@ -79,6 +79,20 @@ public class PushNotificationService {
                 Map.of("screen", "ticketHistory"));
     }
 
+    /** Only called when points were actually credited — PointsService skips
+     * this entirely once a referrer hits their monthly cap. */
+    public void notifyReferralActivated(User referrer) {
+        sendToUser(referrer, "Tu amigo activó su cuenta",
+                "Ganaste puntos por invitarlo. Mirá tu historial.",
+                Map.of("screen", "pointsHistory"));
+    }
+
+    public void notifyReferralRetained(User referrer) {
+        sendToUser(referrer, "Tu amigo se quedó en OfertAR",
+                "Ganaste puntos extra porque sigue usando la app.",
+                Map.of("screen", "pointsHistory"));
+    }
+
     private void sendToUserBlocking(User user, String title, String body, Map<String, String> data) {
         List<PushToken> tokens = pushTokenRepository.findByUserId(user.getId());
         if (tokens.isEmpty()) {

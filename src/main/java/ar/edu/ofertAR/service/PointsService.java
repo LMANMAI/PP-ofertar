@@ -39,6 +39,7 @@ public class PointsService {
     private final PointsTransactionRepository pointsTransactionRepository;
     private final TicketRepository ticketRepository;
     private final TransactionTemplate transactionTemplate;
+    private final PushNotificationService pushNotificationService;
 
     private static final int POINTS_REFERRED_SIGNUP = 20;
     private static final int POINTS_REFERRER_ACTIVATION = 50;
@@ -132,6 +133,7 @@ public class PointsService {
         if (activationsThisMonth < REFERRAL_MONTHLY_CAP) {
             credit(referral.getReferrer(), PointsReason.REFERRAL_ACTIVATED, POINTS_REFERRER_ACTIVATION,
                     "Tu amigo activó su cuenta");
+            pushNotificationService.notifyReferralActivated(referral.getReferrer());
         } else {
             log.info("Referral {} activado sin puntos: referrer {} ya alcanzo el tope mensual ({})",
                     referral.getId(), referral.getReferrer().getId(), REFERRAL_MONTHLY_CAP);
@@ -185,6 +187,7 @@ public class PointsService {
 
         credit(referral.getReferrer(), PointsReason.REFERRAL_RETAINED, POINTS_REFERRER_RETENTION,
                 "Tu amigo se quedó en OfertAR");
+        pushNotificationService.notifyReferralRetained(referral.getReferrer());
         referral.setStatus(ReferralStatus.RETAINED);
         referral.setRetainedAt(now);
         referralRepository.save(referral);
