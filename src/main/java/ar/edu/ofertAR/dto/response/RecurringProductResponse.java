@@ -1,0 +1,174 @@
+package ar.edu.ofertAR.dto.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class RecurringProductResponse {
+
+    private String description;
+    private String barcode;
+    private String category;
+    /** Times this product appeared as a line item across all the user's tickets. */
+    private long purchaseCount;
+    /** Distinct tickets (i.e. separate shopping trips) that included it — the
+     * better signal for "buys this regularly" than raw line-item count. */
+    private long ticketCount;
+    /** Whether the product appears in the reference ticket: the one passed as
+     * {@code ticketId}, or the user's most recent one when none was given.
+     * Drives both the shopping-list checklist and the "forgot to buy?" prompt. */
+    private boolean inReferenceTicket;
+    private BigDecimal totalDiscounts;
+    /** Unit price the user actually paid the last time they bought it, so the
+     * app can put a current offer against their own history instead of only
+     * against the retailer's list price. Null if the ticket never recorded one.
+     *
+     * Careful with products sold by weight: this is per kilo, while a catalog
+     * offer is per package, so the two are not comparable for those lines. */
+    private BigDecimal lastPaidPrice;
+    /** When that purchase happened, so the app can say "hace 3 semanas". */
+    private LocalDateTime lastPaidAt;
+    /** Null when no current offer was found for this product's brand. */
+    private BestOffer bestOffer;
+    /** Regional campaign promotions matching this product's brand. These are
+     * the offers that carry a validity window; {@link BestOffer} is just the
+     * current shelf price. Empty when none match. */
+    @Builder.Default
+    private List<CampaignOffer> campaignOffers = List.of();
+    /** Offers on the same kind of product from other brands. Empty unless the
+     * user enabled "marcas alternativas" in their profile. */
+    @Builder.Default
+    private List<AlternativeOffer> alternativeOffers = List.of();
+    /** Promotions on this product that are conditions on quantity — 3x2, 2x1,
+     * "80% en la 2da unidad" — rather than a lower shelf price.
+     *
+     * <p>Sits next to {@link #bestOffer} and not inside it because the two are
+     * independent: a product on 3x2 has no unit discount, so it never shows up
+     * as a best offer, and this list is the only place the user ever gets to
+     * see the mechanic. Ordered by how reachable the promotion is (a 2x1 asks
+     * less than a 6x5), then by price. Empty when there are none. */
+    @Builder.Default
+    private List<PromoMechanic> promoMechanics = List.of();
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class BestOffer {
+        private String retailerName;
+        /** The catalog product this price belongs to. It shares the brand and
+         * the kind of product with what the user bought, but not necessarily
+         * the size or variety, so the app shows it rather than implying the
+         * price is for the exact item on their receipt. */
+        private String productName;
+        /** The retailer's photo of that catalog product, or null when it has
+         * none. The app draws it on the recurring-products card and falls back
+         * to its own icon when this is absent, so an older scraper that does
+         * not send it degrades to exactly the previous appearance. */
+        private String imageUrl;
+        private BigDecimal price;
+        private BigDecimal listPrice;
+        private BigDecimal discountPct;
+        /** The first of {@link #promoLabels}. Kept because the app has always
+         * read a single string here; new clients should read the list, which
+         * is the only place the promotion mechanic reliably appears. */
+        private String promoLabel;
+        /** Every promo label the retailer published for this SKU, in order.
+         * The chains lead with their bank promotions ("Tarjeta Carrefour 15%"),
+         * so the "3x2" or "80% en la 2da unidad" the user can actually act on
+         * is often not the first one. Empty when the SKU advertises none. */
+        @Builder.Default
+        private List<String> promoLabels = List.of();
+        /** Units that must be bought for the promotion to apply. 1 means no
+         * condition; null means the scraper did not report it (an older
+         * deploy), which is not the same as "no condition" and must not be
+         * rendered as one. */
+        private Integer requiredQuantity;
+        /** Effective unit price when {@link #requiredQuantity} units are
+         * bought, for the chains that publish it. Null means the price under
+         * the condition is unknown — show the label, not a number. */
+        private BigDecimal promoUnitPrice;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CampaignOffer {
+        /** Id of the promotion in the offers feed, as "campaign:<externalId>",
+         * so the app can open this promotion's full detail — legal text and
+         * all — instead of showing a truncated copy of it here. */
+        private String offerId;
+        private String retailerName;
+        private String province;
+        private String legalText;
+        /** ISO-8601 string as published by the retailer; the app formats it. */
+        private String activeTo;
+        private String imageUrl;
+        /** Percentages the OCR read off the creative, e.g. [30, 40]. Best guess:
+         * these come from reading a promo image, not from a structured field. */
+        @Builder.Default
+        private List<Integer> discountPercentages = List.of();
+        /** second_unit, 3x2, 2x1, percentage_off, or null when unknown. Tells
+         * the app whether the percentage is a straight discount or a
+         * conditional one, which changes how it must be worded. */
+        private String mechanic;
+        /** The percentage rests on OCR alone, with no campaign metadata to
+         * confirm it. The app hedges only in that case. */
+        private boolean percentagesUnverified;
+    }
+
+    /**
+     * A product whose promotion is a condition on quantity, not a price cut.
+     *
+     * <p>Its price field is {@code unitPrice} and not {@code price} on purpose:
+     * unlike {@link BestOffer#price}, this is <em>not</em> what the user pays
+     * for a deal. It is the ordinary price of one unit, with the promotion not
+     * yet applied — it only turns into a saving once {@link #requiredQuantity}
+     * units are in the cart. The app must not word it as "oferta: $X".
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PromoMechanic {
+        private String retailerName;
+        private String productName;
+        private String imageUrl;
+        /** What ONE unit costs today, promotion not applied. */
+        private BigDecimal unitPrice;
+        private BigDecimal listPrice;
+        /** The labels stating the mechanic ("3X2", "80% en la 2da unidad"). */
+        @Builder.Default
+        private List<String> promoLabels = List.of();
+        /** Units required for the promotion to apply; > 1 for anything that
+         * belongs in this list. Null only if the scraper omitted it. */
+        private Integer requiredQuantity;
+        /** Effective price per unit once the condition is met, where the chain
+         * publishes it (COTO). Null means unknown — show the label, never a
+         * number derived here. */
+        private BigDecimal promoUnitPrice;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AlternativeOffer {
+        private String productName;
+        private String brand;
+        private String retailerName;
+        private BigDecimal price;
+        private BigDecimal listPrice;
+        private BigDecimal discountPct;
+    }
+}

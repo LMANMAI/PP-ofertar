@@ -39,3 +39,27 @@ build/
 
 ### VS Code ###
 .vscode/
+<<<<<<< HEAD
+=======
+
+### Skills ###
+.agents
+skills-lock.json
+
+### Environment ###
+.env
+.env.local
+
+.codegraph
+
+### Eclipse bin ###
+bin/
+
+### Local tooling / docs (no versionar) ###
+.cursor/
+.gemini/
+AGENTS.md
+GEMINI.md
+opencode.jsonc
+doc/
+>>>>>>> 420612e (Merge pull request #10 from LMANMAI/feature/sepa-block-fix)
