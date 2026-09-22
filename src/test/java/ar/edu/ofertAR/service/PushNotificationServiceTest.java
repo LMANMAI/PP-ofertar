@@ -4,6 +4,8 @@ import ar.edu.ofertAR.dto.request.RegisterPushTokenRequest;
 import ar.edu.ofertAR.model.PushToken;
 import ar.edu.ofertAR.model.User;
 import ar.edu.ofertAR.repository.PushTokenRepository;
+import ar.edu.ofertAR.repository.TicketRepository;
+import ar.edu.ofertAR.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -13,12 +15,15 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,7 +33,10 @@ import static org.mockito.Mockito.*;
 class PushNotificationServiceTest {
 
     @Mock private PushTokenRepository pushTokenRepository;
+    @Mock private UserRepository userRepository;
+    @Mock private TicketRepository ticketRepository;
     @Mock(answer = Answers.RETURNS_DEEP_STUBS) private RestClient restClient;
+    @Mock private TransactionTemplate transactionTemplate;
 
     /** Runs submitted tasks synchronously, so tests don't need to wait on a
      * background thread to see the effect of sendToUser. */
@@ -38,7 +46,18 @@ class PushNotificationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PushNotificationService(pushTokenRepository, restClient, sameThreadExecutor);
+        service = new PushNotificationService(
+                pushTokenRepository, userRepository, ticketRepository, restClient, sameThreadExecutor, transactionTemplate);
+    }
+
+    /** runReactivationJob wraps each candidate in transactionTemplate.executeWithoutResult;
+     * this makes the mock actually run what's passed to it instead of doing nothing. */
+    @SuppressWarnings("unchecked")
+    private void makeTransactionTemplateRunItsAction() {
+        doAnswer(invocation -> {
+            invocation.getArgument(0, Consumer.class).accept(null);
+            return null;
+        }).when(transactionTemplate).executeWithoutResult(any());
     }
 
     private static User user(Long id) {
@@ -135,6 +154,72 @@ class PushNotificationServiceTest {
             service.sendToUser(u, "Titulo", "Cuerpo", Map.of());
 
             verify(pushTokenRepository, never()).deleteByToken(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("job de reactivacion")
+    class ReactivationJob {
+
+        @Test
+        @DisplayName("usuario inactivo, nunca nudgeado, con alertas prendidas: recibe el push y queda marcado")
+        void dormantUser_neverNudged_getsNudged() {
+            makeTransactionTemplateRunItsAction();
+            User u = user(1L);
+            when(ticketRepository.findUserIdsWithLastTicketBefore(any())).thenReturn(List.of(1L));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(u));
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of());
+
+            service.runReactivationJob();
+
+            assertNotNull(u.getLastReactivationNudgeAt());
+            verify(userRepository).save(u);
+        }
+
+        @Test
+        @DisplayName("alertas de ofertas apagadas: no nudgea")
+        void offersPushDisabled_isSkipped() {
+            makeTransactionTemplateRunItsAction();
+            User u = user(1L);
+            u.setOffersPushEnabled(false);
+            when(ticketRepository.findUserIdsWithLastTicketBefore(any())).thenReturn(List.of(1L));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(u));
+
+            service.runReactivationJob();
+
+            assertNull(u.getLastReactivationNudgeAt());
+            verify(userRepository, never()).save(any());
+            verifyNoInteractions(pushTokenRepository);
+        }
+
+        @Test
+        @DisplayName("nudgeado hace menos de 30 dias: no nudgea de nuevo")
+        void withinCooldown_isSkipped() {
+            makeTransactionTemplateRunItsAction();
+            User u = user(1L);
+            u.setLastReactivationNudgeAt(LocalDateTime.now().minusDays(5));
+            when(ticketRepository.findUserIdsWithLastTicketBefore(any())).thenReturn(List.of(1L));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(u));
+
+            service.runReactivationJob();
+
+            verify(userRepository, never()).save(any());
+            verifyNoInteractions(pushTokenRepository);
+        }
+
+        @Test
+        @DisplayName("nudgeado hace mas de 30 dias: vuelve a nudgear")
+        void pastCooldown_getsNudgedAgain() {
+            makeTransactionTemplateRunItsAction();
+            User u = user(1L);
+            u.setLastReactivationNudgeAt(LocalDateTime.now().minusDays(40));
+            when(ticketRepository.findUserIdsWithLastTicketBefore(any())).thenReturn(List.of(1L));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(u));
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of());
+
+            service.runReactivationJob();
+
+            verify(userRepository).save(u);
         }
     }
 

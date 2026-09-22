@@ -5,11 +5,15 @@ import ar.edu.ofertAR.model.PushToken;
 import ar.edu.ofertAR.model.Ticket;
 import ar.edu.ofertAR.model.User;
 import ar.edu.ofertAR.repository.PushTokenRepository;
+import ar.edu.ofertAR.repository.TicketRepository;
+import ar.edu.ofertAR.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 
 import java.time.LocalDateTime;
@@ -31,8 +35,17 @@ public class PushNotificationService {
     private static final String EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
     private final PushTokenRepository pushTokenRepository;
+    private final UserRepository userRepository;
+    private final TicketRepository ticketRepository;
     private final RestClient restClient;
     private final ExecutorService pushNotificationExecutor;
+    private final TransactionTemplate transactionTemplate;
+
+    /** Nobody's scanned in this many days. */
+    private static final int REACTIVATION_DORMANT_DAYS = 14;
+    /** Never nudge the same user twice inside this window, even if the job
+     * runs daily and they're still dormant on every run. */
+    private static final int REACTIVATION_COOLDOWN_DAYS = 30;
 
     @Transactional
     public void registerToken(User user, RegisterPushTokenRequest request) {
@@ -91,6 +104,44 @@ public class PushNotificationService {
         sendToUser(referrer, "Tu amigo se quedó en OfertAR",
                 "Ganaste puntos extra porque sigue usando la app.",
                 Map.of("screen", "pointsHistory"));
+    }
+
+    // ── Reactivacion — job diario ────────────────────────────────────────
+
+    @Scheduled(cron = "${reactivation.cron:0 30 4 * * *}", zone = "America/Argentina/Buenos_Aires")
+    public void runReactivationJob() {
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(REACTIVATION_DORMANT_DAYS);
+        List<Long> dormantUserIds = ticketRepository.findUserIdsWithLastTicketBefore(cutoff);
+        log.info("Job de reactivacion: {} usuarios sin escanear desde antes de {}", dormantUserIds.size(), cutoff);
+
+        for (Long userId : dormantUserIds) {
+            try {
+                transactionTemplate.executeWithoutResult(status -> processReactivationCandidate(userId));
+            } catch (Exception e) {
+                log.error("Fallo evaluando reactivacion del usuario {}: {}", userId, e.getMessage(), e);
+            }
+        }
+    }
+
+    /** Gated by offersPushEnabled — this is engagement, not a transactional
+     * response to something the user did — and by its own cooldown so a
+     * still-dormant user isn't nudged again on every run of the job. */
+    private void processReactivationCandidate(Long userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null || !user.isOffersPushEnabled()) {
+            return;
+        }
+
+        LocalDateTime cooldownCutoff = LocalDateTime.now().minusDays(REACTIVATION_COOLDOWN_DAYS);
+        if (user.getLastReactivationNudgeAt() != null && user.getLastReactivationNudgeAt().isAfter(cooldownCutoff)) {
+            return;
+        }
+
+        sendToUser(user, "Te extrañamos",
+                "Escaneá tu próximo ticket y seguí ahorrando con OfertAR.",
+                Map.of("screen", "scanMethod"));
+        user.setLastReactivationNudgeAt(LocalDateTime.now());
+        userRepository.save(user);
     }
 
     private void sendToUserBlocking(User user, String title, String body, Map<String, String> data) {
