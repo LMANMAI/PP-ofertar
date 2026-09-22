@@ -1,6 +1,7 @@
 package ar.edu.ofertAR.service;
 
 import ar.edu.ofertAR.dto.request.RegisterPushTokenRequest;
+import ar.edu.ofertAR.dto.response.OfferFeedResponse;
 import ar.edu.ofertAR.model.PushToken;
 import ar.edu.ofertAR.model.Ticket;
 import ar.edu.ofertAR.model.User;
@@ -104,6 +105,16 @@ public class PushNotificationService {
         sendToUser(referrer, "Tu amigo se quedó en OfertAR",
                 "Ganaste puntos extra porque sigue usando la app.",
                 Map.of("screen", "pointsHistory"));
+    }
+
+    /** One offer, already chosen as "the" one worth telling this user about
+     * — OfferAlertService owns picking it, this just formats and sends it. */
+    public void notifyNewOffer(User user, OfferFeedResponse.Offer offer) {
+        String title = "Nueva oferta en " + (offer.getRetailerName() != null ? offer.getRetailerName() : "tu súper");
+        String body = offer.getProductName() != null
+                ? offer.getProductName() + ": " + offer.getHeadline()
+                : offer.getHeadline();
+        sendToUser(user, title, body, Map.of("screen", "offers"));
     }
 
     // ── Reactivacion — job diario ────────────────────────────────────────
