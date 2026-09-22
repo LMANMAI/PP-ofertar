@@ -1,5 +1,6 @@
 package ar.edu.ofertAR.dto.response;
 
+import ar.edu.ofertAR.model.PointsReason;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,16 +12,11 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserProfileResponse {
+public class PointsHistoryEntryResponse {
 
     private Long id;
-    private String name;
-    private String email;
-    private String profilePicture;
-    private String address;
-    private String phone;
-    private boolean alternativeBrandsEnabled;
-    private String referralCode;
+    private PointsReason reason;
+    private String description;
     private int points;
     private LocalDateTime createdAt;
 }

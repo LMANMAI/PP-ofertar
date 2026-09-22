@@ -21,6 +21,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final PointsService pointsService;
 
     public AuthResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
@@ -32,9 +33,11 @@ public class AuthService {
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .phone(request.getPhone())
+                .referralCode(pointsService.generateUniqueReferralCode())
                 .build();
 
         userRepository.save(user);
+        pointsService.applyReferralSignup(user, request.getReferralCode());
 
         String token = jwtService.generateToken(user);
 
@@ -63,6 +66,8 @@ public class AuthService {
                 .address(user.getAddress())
                 .phone(user.getPhone())
                 .alternativeBrandsEnabled(user.isAlternativeBrandsEnabled())
+                .referralCode(user.getReferralCode())
+                .points(user.getPoints())
                 .createdAt(user.getCreatedAt())
                 .build();
 
