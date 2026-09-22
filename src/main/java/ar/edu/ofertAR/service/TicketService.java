@@ -151,6 +151,15 @@ public class TicketService {
         }
 
         if (request.getItems() != null && !request.getItems().isEmpty()) {
+            // What the lines added up to before this edit. The stored subtotal
+            // is the one printed on the receipt, which the item sum does not
+            // reproduce while the OCR reports some lines gross and others net;
+            // moving it by the size of the correction keeps the printed figure
+            // as the baseline instead of replacing it with the item sum.
+            BigDecimal grossBefore = ticket.getItems().stream()
+                    .map(it -> it.getSubtotal() != null ? it.getSubtotal() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
             Set<Long> requestedIds = request.getItems().stream()
                     .map(UpdateTicketRequest.TicketItemUpdate::getId)
                     .filter(rid -> rid != null)
@@ -217,11 +226,15 @@ public class TicketService {
                 newSubtotal = newSubtotal.add(item.getSubtotal());
             }
 
-			ticket.setSubtotal(newSubtotal);
+			BigDecimal previousSubtotal = ticket.getSubtotal();
+			BigDecimal correctedSubtotal = previousSubtotal != null
+					? previousSubtotal.add(newSubtotal.subtract(grossBefore))
+					: newSubtotal;
+			ticket.setSubtotal(correctedSubtotal);
 			BigDecimal discounts = ticket.getTotalDiscounts() != null
 					? ticket.getTotalDiscounts()
 					: BigDecimal.ZERO;
-			ticket.setTotal(newSubtotal.subtract(discounts));
+			ticket.setTotal(correctedSubtotal.subtract(discounts));
         }
 
         // Confirming is what closes the editing window; from here the ticket

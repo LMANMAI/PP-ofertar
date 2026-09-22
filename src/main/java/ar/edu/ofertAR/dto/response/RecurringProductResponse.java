@@ -48,6 +48,16 @@ public class RecurringProductResponse {
      * user enabled "marcas alternativas" in their profile. */
     @Builder.Default
     private List<AlternativeOffer> alternativeOffers = List.of();
+    /** Promotions on this product that are conditions on quantity — 3x2, 2x1,
+     * "80% en la 2da unidad" — rather than a lower shelf price.
+     *
+     * <p>Sits next to {@link #bestOffer} and not inside it because the two are
+     * independent: a product on 3x2 has no unit discount, so it never shows up
+     * as a best offer, and this list is the only place the user ever gets to
+     * see the mechanic. Ordered by how reachable the promotion is (a 2x1 asks
+     * less than a 6x5), then by price. Empty when there are none. */
+    @Builder.Default
+    private List<PromoMechanic> promoMechanics = List.of();
 
     @Data
     @Builder
@@ -60,10 +70,33 @@ public class RecurringProductResponse {
          * the size or variety, so the app shows it rather than implying the
          * price is for the exact item on their receipt. */
         private String productName;
+        /** The retailer's photo of that catalog product, or null when it has
+         * none. The app draws it on the recurring-products card and falls back
+         * to its own icon when this is absent, so an older scraper that does
+         * not send it degrades to exactly the previous appearance. */
+        private String imageUrl;
         private BigDecimal price;
         private BigDecimal listPrice;
         private BigDecimal discountPct;
+        /** The first of {@link #promoLabels}. Kept because the app has always
+         * read a single string here; new clients should read the list, which
+         * is the only place the promotion mechanic reliably appears. */
         private String promoLabel;
+        /** Every promo label the retailer published for this SKU, in order.
+         * The chains lead with their bank promotions ("Tarjeta Carrefour 15%"),
+         * so the "3x2" or "80% en la 2da unidad" the user can actually act on
+         * is often not the first one. Empty when the SKU advertises none. */
+        @Builder.Default
+        private List<String> promoLabels = List.of();
+        /** Units that must be bought for the promotion to apply. 1 means no
+         * condition; null means the scraper did not report it (an older
+         * deploy), which is not the same as "no condition" and must not be
+         * rendered as one. */
+        private Integer requiredQuantity;
+        /** Effective unit price when {@link #requiredQuantity} units are
+         * bought, for the chains that publish it. Null means the price under
+         * the condition is unknown — show the label, not a number. */
+        private BigDecimal promoUnitPrice;
     }
 
     @Data
@@ -71,6 +104,10 @@ public class RecurringProductResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class CampaignOffer {
+        /** Id of the promotion in the offers feed, as "campaign:<externalId>",
+         * so the app can open this promotion's full detail — legal text and
+         * all — instead of showing a truncated copy of it here. */
+        private String offerId;
         private String retailerName;
         private String province;
         private String legalText;
@@ -88,6 +125,38 @@ public class RecurringProductResponse {
         /** The percentage rests on OCR alone, with no campaign metadata to
          * confirm it. The app hedges only in that case. */
         private boolean percentagesUnverified;
+    }
+
+    /**
+     * A product whose promotion is a condition on quantity, not a price cut.
+     *
+     * <p>Its price field is {@code unitPrice} and not {@code price} on purpose:
+     * unlike {@link BestOffer#price}, this is <em>not</em> what the user pays
+     * for a deal. It is the ordinary price of one unit, with the promotion not
+     * yet applied — it only turns into a saving once {@link #requiredQuantity}
+     * units are in the cart. The app must not word it as "oferta: $X".
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PromoMechanic {
+        private String retailerName;
+        private String productName;
+        private String imageUrl;
+        /** What ONE unit costs today, promotion not applied. */
+        private BigDecimal unitPrice;
+        private BigDecimal listPrice;
+        /** The labels stating the mechanic ("3X2", "80% en la 2da unidad"). */
+        @Builder.Default
+        private List<String> promoLabels = List.of();
+        /** Units required for the promotion to apply; > 1 for anything that
+         * belongs in this list. Null only if the scraper omitted it. */
+        private Integer requiredQuantity;
+        /** Effective price per unit once the condition is met, where the chain
+         * publishes it (COTO). Null means unknown — show the label, never a
+         * number derived here. */
+        private BigDecimal promoUnitPrice;
     }
 
     @Data

@@ -29,46 +29,99 @@ public class OfferFeedClient {
     private final RestClient restClient;
     private final OfferProperties offerProperties;
 
-    public OfferFeedResponse listOffers(List<String> chainSlugs, int page, int pageSize, String province) {
-        boolean firstPage = page <= 1;
+    public OfferFeedResponse listOffers(
+            List<String> chainSlugs, int page, int pageSize, String province, List<String> categories) {
+        // Fetched on every page, not just the first: later pages do not show
+        // them, but how many the first page took is what says where the catalog
+        // resumes.
         List<OfferFeedResponse.Offer> campaigns =
-                firstPage ? fetchCampaigns(chainSlugs, province) : List.of();
+                keepCategories(fetchCampaigns(chainSlugs, province), categories);
+        int shown = campaignsOnFirstPage(campaigns.size(), pageSize);
 
-        // Campaigns lead — they expire, so they are what is worth acting on
-        // first — but they must not swallow the page. They used to be appended
-        // whole: 55 active promotions turned a pageSize=8 request into 63
-        // items, and the home carousel rendered every one of them. Half the
-        // page at most, so the catalog is always represented too.
-        int campaignSlots = campaigns.isEmpty() ? 0 : Math.max(1, pageSize / 2);
         List<OfferFeedResponse.Offer> shownCampaigns =
-                campaigns.subList(0, Math.min(campaignSlots, campaigns.size()));
+                page <= 1 ? campaigns.subList(0, shown) : List.of();
 
-        int catalogSlots = Math.max(1, pageSize - shownCampaigns.size());
-        CatalogPage catalog = fetchCatalog(chainSlugs, page, catalogSlots);
+        CatalogWindow window = catalogWindow(page, pageSize, shown);
+        CatalogPage catalog = fetchCatalog(chainSlugs, window.offset(), window.limit(), categories);
 
         List<OfferFeedResponse.Offer> items = new ArrayList<>(shownCampaigns);
         items.addAll(catalog.items());
 
+        long total = shown + catalog.total();
         return OfferFeedResponse.builder()
                 .page(page)
                 .pageSize(pageSize)
-                .total(catalog.total() + campaigns.size())
-                .totalPages(catalog.totalPages())
+                .total(total)
+                .totalPages(totalPages(catalog.total(), pageSize, shown))
                 .items(items)
                 .build();
+    }
+
+    /**
+     * Campaign categories come from reading the promo image, not from a column,
+     * so they cannot be filtered in SQL the way the catalog is. The list is
+     * small and already in hand, so it is narrowed here instead — and doing it
+     * before the slot count keeps the catalog offsets consistent.
+     */
+    static List<OfferFeedResponse.Offer> keepCategories(
+            List<OfferFeedResponse.Offer> offers, List<String> categories) {
+        if (categories == null || categories.isEmpty()) return offers;
+        return offers.stream()
+                .filter(o -> o.getCategory() != null && categories.contains(o.getCategory()))
+                .toList();
+    }
+
+    /**
+     * Campaigns lead — they expire, so they are what is worth acting on first —
+     * but they must not swallow the page. Appending them whole turned a
+     * pageSize=8 request into 63 items and the home carousel rendered every one
+     * of them. Half the first page at most, so the catalog is always
+     * represented too.
+     */
+    static int campaignsOnFirstPage(int campaignCount, int pageSize) {
+        if (campaignCount <= 0) return 0;
+        return Math.min(campaignCount, Math.max(1, pageSize / 2));
+    }
+
+    /** Where a page's catalog rows start, and how many of them it wants. */
+    record CatalogWindow(int offset, int limit) {}
+
+    /**
+     * The catalog does not resume on a page boundary: the first page gave part
+     * of itself to campaigns, so the second has to start where the first
+     * actually stopped. Paging the catalog by page number instead skipped every
+     * row in between — with a 50-row page and 25 campaign slots, rows 26 to 50
+     * were reachable from nowhere.
+     */
+    static CatalogWindow catalogWindow(int page, int pageSize, int campaignsShown) {
+        int firstPageSlots = Math.max(1, pageSize - campaignsShown);
+        if (page <= 1) return new CatalogWindow(0, firstPageSlots);
+        return new CatalogWindow(firstPageSlots + (page - 2) * pageSize, pageSize);
+    }
+
+    /** Pages the whole feed spans: the first one, plus whatever catalog is left
+     * over after it. */
+    static int totalPages(long catalogTotal, int pageSize, int campaignsShown) {
+        int firstPageSlots = Math.max(1, pageSize - campaignsShown);
+        long remaining = Math.max(0, catalogTotal - firstPageSlots);
+        return 1 + (int) ((remaining + pageSize - 1) / pageSize);
     }
 
     private record CatalogPage(List<OfferFeedResponse.Offer> items, long total, int totalPages) {}
 
     @SuppressWarnings("unchecked")
-    private CatalogPage fetchCatalog(List<String> chainSlugs, int page, int pageSize) {
+    private CatalogPage fetchCatalog(
+            List<String> chainSlugs, int offset, int limit, List<String> categories) {
         try {
             var uri = UriComponentsBuilder.fromUriString(offerProperties.getServiceUrl() + "/api/offers")
-                    .queryParam("page", page)
-                    .queryParam("pageSize", pageSize)
+                    .queryParam("offset", offset)
+                    .queryParam("pageSize", limit)
                     .queryParam("onlyAvailable", true);
             if (chainSlugs != null && !chainSlugs.isEmpty()) {
                 uri.queryParam("chains", String.join(",", chainSlugs));
+            }
+            if (categories != null && !categories.isEmpty()) {
+                uri.queryParam("categories", String.join(",", categories));
             }
 
             var response = (Map<String, Object>) restClient.get()

@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -162,9 +163,34 @@ public class TicketProcessingService {
 
         ticket.setStoreName(mergedStoreName);
         ticket.setTicketId(mergedTicketId);
-        ticket.setTotal(itemsTotal);
-        ticket.setTotalDiscounts(itemsDiscounts);
-        ticket.setSubtotal(itemsTotal.add(itemsDiscounts));
+        // Summing the items cannot produce the printed total while the OCR
+        // reports the same line gross on one photo and net on the next, so
+        // prefer what the receipt itself says. Derived values stay as the
+        // fallback for a ticket photographed without its TOTAL line, and the
+        // two are compared so a silent drift shows up in the log.
+        OcrResult printed = printedTotals(pageResults);
+        if (printed != null) {
+            ticket.setSubtotal(printed.subtotal());
+            ticket.setTotalDiscounts(printed.totalDiscounts());
+            ticket.setTotal(printed.total());
+            BigDecimal drift = printed.total().subtract(itemsTotal.subtract(itemsDiscounts)).abs();
+            if (drift.compareTo(TOTAL_DRIFT_WARN) > 0) {
+                log.warn("Ticket {}: el total impreso ({}) y la suma de los items ({}) difieren en {}",
+                        ticket.getId(), printed.total(), itemsTotal.subtract(itemsDiscounts), drift);
+            }
+        } else {
+            // itemsTotal is the sum of the printed line prices, i.e. the gross
+            // the receipt calls its subtotal; the discounts below it are what
+            // the shopper did not pay. Confirming a ticket
+            // (TicketService.updateTicket) already resolves them this way, so
+            // processing has to agree or the total changes the moment the user
+            // edits anything.
+            log.warn("Ticket {}: ninguna pagina reporto un total coherente; se deriva de los items",
+                    ticket.getId());
+            ticket.setSubtotal(itemsTotal);
+            ticket.setTotalDiscounts(itemsDiscounts);
+            ticket.setTotal(itemsTotal.subtract(itemsDiscounts));
+        }
         ticket.setStatus(allItems.isEmpty() ? TicketStatus.FAILED : TicketStatus.PROCESSED);
         // Mutated, not replaced: Ticket.items is mapped with orphanRemoval, and
         // handing Hibernate a different List instance than the one it is
@@ -175,6 +201,34 @@ public class TicketProcessingService {
         ticketRepository.save(ticket);
         log.info("Ticket {} procesado — {} items de {} paginas, super: {}",
                 ticket.getId(), allItems.size(), pageResults.size(), ticket.getStoreName());
+    }
+
+    /** A page's three totals may disagree by this much and still be believed:
+     * the model rounds its own arithmetic to the cent. */
+    private static final BigDecimal TOTAL_CONSISTENCY_TOLERANCE = new BigDecimal("0.05");
+
+    /** Above this the printed total and the item sum are reported as a drift
+     * worth looking at rather than rounding noise. */
+    private static final BigDecimal TOTAL_DRIFT_WARN = new BigDecimal("1.00");
+
+    /**
+     * The totals a page reports are the model's arithmetic over what that photo
+     * showed, so a page holding only the middle of a receipt reports a partial
+     * sum. The page that captured the printed TOTAL reports the real one, and
+     * it is necessarily the largest: no partial sum of the same receipt can
+     * exceed the whole. Pages whose own three numbers do not add up are
+     * discarded first — that is exactly how a misread lands here.
+     *
+     * Returns null when no page is believable, leaving the caller to derive the
+     * money from the items.
+     */
+    static OcrResult printedTotals(List<OcrResult> pages) {
+        return pages.stream()
+                .filter(p -> p.subtotal() != null && p.totalDiscounts() != null && p.total() != null)
+                .filter(p -> p.subtotal().subtract(p.totalDiscounts()).subtract(p.total()).abs()
+                        .compareTo(TOTAL_CONSISTENCY_TOLERANCE) <= 0)
+                .max(Comparator.comparing(OcrResult::total))
+                .orElse(null);
     }
 
     /**
@@ -188,10 +242,59 @@ public class TicketProcessingService {
     static List<OcrItem> mergePages(List<List<OcrItem>> pages) {
         List<OcrItem> merged = new ArrayList<>();
         for (List<OcrItem> pageItems : pages) {
-            int repeated = overlapLength(merged, pageItems);
-            merged.addAll(pageItems.subList(repeated, pageItems.size()));
+            Seam seam = findSeam(merged, pageItems);
+            merged.addAll(pageItems.subList(seam.skip() + seam.length(), pageItems.size()));
         }
         return merged;
+    }
+
+    /**
+     * Where a new page stops repeating what is already collected: {@code skip}
+     * leading lines to discard, then {@code length} lines that are the seam
+     * itself. Everything after those is new.
+     */
+    record Seam(int skip, int length) {
+    }
+
+    /**
+     * How many stray lines the head of a photo may show before the region that
+     * actually continues the previous one. A long receipt curls while it is
+     * held, so a strip from further up the ticket often lands above the seam
+     * and the repeat does not start on line one.
+     */
+    private static final int MAX_HEAD_SKIP = 4;
+
+    /**
+     * With nothing skipped, one repeated line is enough to call it a seam.
+     * Once lines are being discarded from the head of the new page, demand a
+     * longer anchor: listing a purchase twice is a bad total, dropping one is
+     * a purchase the user never sees again.
+     */
+    private static final int MIN_ANCHOR_WHEN_SKIPPING = 2;
+
+    /**
+     * Largest run of lines that closes the join, allowing the repeat to start
+     * a little way into {@code next}. Anything above the seam in a later photo
+     * is by construction earlier on the receipt, so it is already collected
+     * and is dropped with the seam.
+     */
+    static Seam findSeam(List<OcrItem> collected, List<OcrItem> next) {
+        Seam best = new Seam(0, 0);
+        int maxSkip = Math.min(MAX_HEAD_SKIP, next.size());
+        for (int skip = 0; skip <= maxSkip; skip++) {
+            int max = Math.min(collected.size(), next.size() - skip);
+            for (int k = max; k > 0; k--) {
+                // k only shrinks from here, so nothing left can beat what we have.
+                if (k <= best.length()) break;
+                if (skip > 0 && k < MIN_ANCHOR_WHEN_SKIPPING) break;
+                if (sameLines(collected.subList(collected.size() - k, collected.size()),
+                        next.subList(skip, skip + k))) {
+                    best = new Seam(skip, k);
+                    break;
+                }
+            }
+        }
+        return best;
     }
 
     /**
@@ -233,8 +336,21 @@ public class TicketProcessingService {
      * price is the field the model gets right most consistently.
      */
     private static boolean sameLine(OcrItem a, OcrItem b) {
+        // Measured against four photos of one 42-line receipt: the same line
+        // comes back with a different description on one photo ("P/USAR MAR"
+        // vs "P/USAR AMA, RC"), a different price on another (1625.01 gross on
+        // one, 1462.52 net on the next), but the barcode holds. Comparing
+        // description and price found none of the three seams; the barcode
+        // found two of them and cut the item count from 68 to 46.
+        if (hasText(a.code()) && hasText(b.code())) {
+            return a.code().equals(b.code());
+        }
         return normalise(a.description()).equals(normalise(b.description()))
                 && samePrice(a.price(), b.price());
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     /** Two photos of one line rarely transcribe identically — "2.25L" on one

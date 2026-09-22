@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.Comparator;
 import java.util.List;
@@ -42,12 +43,7 @@ public class SavingsService {
         List<Ticket> tickets = ticketRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
                 .stream()
                 .filter(t -> t.getStatus() == TicketStatus.PROCESSED)
-                .filter(t -> {
-                    YearMonth ticketMonth = YearMonth.from(t.getCreatedAt());
-                    if (from != null && ticketMonth.isBefore(from)) return false;
-                    if (to != null && ticketMonth.isAfter(to)) return false;
-                    return true;
-                })
+                .filter(t -> withinMonths(t.getCreatedAt(), from, to))
                 .toList();
 
         return SavingsReportResponse.builder()
@@ -57,6 +53,22 @@ public class SavingsService {
                 .timeline(buildTimeline(tickets))
                 .topProducts(buildTopProducts(tickets, 10))
                 .build();
+    }
+
+
+    /**
+     * Whether a ticket falls inside the requested month range.
+     *
+     * A null bound means open-ended, which is what the caller gets when it
+     * asks for no range at all — the whole history. That is the right answer
+     * for an all-time view and the wrong one for a card headed "AHORRO DEL
+     * MES", so the range is the caller's to supply.
+     */
+    static boolean withinMonths(LocalDateTime createdAt, YearMonth from, YearMonth to) {
+        YearMonth ticketMonth = YearMonth.from(createdAt);
+        if (from != null && ticketMonth.isBefore(from)) return false;
+        if (to != null && ticketMonth.isAfter(to)) return false;
+        return true;
     }
 
     private SavingsReportResponse.Summary buildSummary(List<Ticket> tickets) {

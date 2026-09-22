@@ -25,4 +25,16 @@ public record ComercioPrecioResponse(
                 .cantidadSucursales(p.getCantidadSucursales())
                 .build();
     }
+
+    /** Copia con la bandera reemplazada (para nombres de cadena curados). */
+    public ComercioPrecioResponse withBandera(String bandera) {
+        return ComercioPrecioResponse.builder()
+                .comercioId(comercioId)
+                .bandera(bandera)
+                .razonSocial(razonSocial)
+                .precioMinimo(precioMinimo)
+                .precioMaximo(precioMaximo)
+                .cantidadSucursales(cantidadSucursales)
+                .build();
+    }
 }
