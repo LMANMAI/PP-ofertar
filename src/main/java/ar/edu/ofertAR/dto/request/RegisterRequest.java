@@ -24,9 +24,6 @@ public class RegisterRequest {
     @Size(min = 6, max = 100, message = "La contraseña debe tener entre 6 y 100 caracteres")
     private String password;
 
-    @Size(max = 20)
-    private String phone;
-
     /** Another user's invite code. Optional — an unknown or self-code is
      * ignored silently rather than blocking the signup. */
     private String referralCode;

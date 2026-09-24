@@ -44,9 +44,6 @@ public class User implements UserDetails {
     @Column(length = 300)
     private String address;
 
-    @Column(length = 20)
-    private String phone;
-
     /** Opt-in to being shown offers on the same kind of product from a
      * different brand (e.g. Elite toilet paper when the user buys Higienol). */
     @Column(name = "alternative_brands_enabled", nullable = false)

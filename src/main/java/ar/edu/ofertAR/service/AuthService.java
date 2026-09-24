@@ -32,7 +32,6 @@ public class AuthService {
                 .name(request.getName())
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
-                .phone(request.getPhone())
                 .referralCode(pointsService.generateUniqueReferralCode())
                 .build();
 
@@ -64,7 +63,6 @@ public class AuthService {
                 .email(user.getEmail())
                 .profilePicture(user.getProfilePicture())
                 .address(user.getAddress())
-                .phone(user.getPhone())
                 .alternativeBrandsEnabled(user.isAlternativeBrandsEnabled())
                 .referralCode(user.getReferralCode())
                 .points(user.getPoints())

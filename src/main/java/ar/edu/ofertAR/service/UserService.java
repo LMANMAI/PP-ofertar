@@ -24,6 +24,10 @@ public class UserService {
     }
 
     public AuthResponse updateProfile(User user, UpdateProfileRequest request) {
+        // Checked before anything else is applied, so a rejected email change
+        // does not leave the other fields half-updated on the entity.
+        applyEmailChange(user, request);
+
         if (request.getName() != null) {
             user.setName(request.getName());
         }
@@ -32,9 +36,6 @@ public class UserService {
         }
         if (request.getAddress() != null) {
             user.setAddress(request.getAddress());
-        }
-        if (request.getPhone() != null) {
-            user.setPhone(request.getPhone());
         }
         if (request.getAlternativeBrandsEnabled() != null) {
             user.setAlternativeBrandsEnabled(request.getAlternativeBrandsEnabled());
@@ -47,6 +48,32 @@ public class UserService {
                 .token(newToken)
                 .user(toResponse(user))
                 .build();
+    }
+
+    /**
+     * The email is the login identity (the JWT subject) and the destination of
+     * password reset codes, so changing it needs the current password. Same
+     * address, ignoring case, is a no-op and asks for nothing. The token the
+     * caller gets back is issued after this, so it already carries the new email.
+     */
+    private void applyEmailChange(User user, UpdateProfileRequest request) {
+        if (request.getEmail() == null) {
+            return;
+        }
+        String newEmail = request.getEmail().trim();
+        if (newEmail.equalsIgnoreCase(user.getEmail())) {
+            return;
+        }
+        if (request.getCurrentPassword() == null || request.getCurrentPassword().isBlank()) {
+            throw new IllegalArgumentException("Ingresá tu contraseña actual para cambiar el correo");
+        }
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            throw new IllegalArgumentException("La contraseña actual es incorrecta");
+        }
+        if (userRepository.existsByEmail(newEmail)) {
+            throw new IllegalArgumentException("El email ya está registrado");
+        }
+        user.setEmail(newEmail);
     }
 
     public void changePassword(User user, ChangePasswordRequest request) {
@@ -69,7 +96,6 @@ public class UserService {
                 .email(user.getEmail())
                 .profilePicture(user.getProfilePicture())
                 .address(user.getAddress())
-                .phone(user.getPhone())
                 .alternativeBrandsEnabled(user.isAlternativeBrandsEnabled())
                 .referralCode(user.getReferralCode())
                 .points(user.getPoints())
