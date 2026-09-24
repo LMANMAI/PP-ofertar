@@ -10,6 +10,7 @@ public record SepaPrecioResponse(
         String comercioCuit,
         String comercioRazonSocial,
         String bandera,
+        String banderaId,
         String sucursalId,
         String productoId,
         String ean,
@@ -29,7 +30,7 @@ public record SepaPrecioResponse(
     public SepaPrecioResponse withBandera(String bandera) {
         return new SepaPrecioResponse(
                 comercioId, comercioCuit, comercioRazonSocial, bandera,
-                sucursalId, productoId, ean, descripcion, marca,
+                banderaId, sucursalId, productoId, ean, descripcion, marca,
                 cantidadPresentacion, unidadMedidaPresentacion, precioLista,
                 precioReferencia, unidadMedidaReferencia, precioPromo1,
                 leyendaPromo1, precioPromo2, leyendaPromo2);

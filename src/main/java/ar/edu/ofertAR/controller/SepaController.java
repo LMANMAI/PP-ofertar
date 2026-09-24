@@ -4,12 +4,14 @@ import ar.edu.ofertAR.dto.response.ComercioPrecioResponse;
 import ar.edu.ofertAR.dto.response.SepaPreciosPageResponse;
 import ar.edu.ofertAR.dto.response.SepaProductoDetalleResponse;
 import ar.edu.ofertAR.dto.response.SepaProductoResponse;
+import ar.edu.ofertAR.dto.response.SepaSucursalesCercanasResponse;
 import ar.edu.ofertAR.dto.response.SepaSyncEstadoResponse;
 import ar.edu.ofertAR.model.SepaProducto;
 import ar.edu.ofertAR.repository.SepaPrecioComercioRepository;
 import ar.edu.ofertAR.repository.SepaProductoRepository;
 import ar.edu.ofertAR.service.SepaComercioNombres;
 import ar.edu.ofertAR.service.SepaService;
+import ar.edu.ofertAR.service.SepaSucursalPreciosService;
 import ar.edu.ofertAR.service.SepaSnapshotService;
 import ar.edu.ofertAR.service.imagen.ProductoExterno;
 import ar.edu.ofertAR.service.imagen.ProductoImagenService;
@@ -30,9 +32,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/sepa")
@@ -46,6 +50,11 @@ public class SepaController {
     private final SepaProductoRepository sepaProductoRepository;
     private final SepaPrecioComercioRepository sepaPrecioComercioRepository;
     private final ProductoImagenService productoImagenService;
+    private final SepaSucursalPreciosService sucursalPreciosService;
+
+    /** Radio por defecto y tope: el mismo rango que Mis tiendas favoritas (1 a 20 km) con margen. */
+    private static final double RADIO_DEFECTO_KM = 5.0;
+    private static final double RADIO_MAXIMO_KM = 30.0;
 
     @GetMapping("/precios")
     @Operation(summary = "Consulta EN VIVO contra el dataset SEPA (lento: descarga y parsea el zip)",
@@ -121,6 +130,42 @@ public class SepaController {
         return ResponseEntity.ok(encontrado
                 .map(this::detalleDesdeSnapshot)
                 .orElseGet(() -> detalleDesdeProveedores(normalizado)));
+    }
+
+    @GetMapping("/productos/{ean}/sucursales")
+    @Operation(summary = "Dónde está más barato un producto cerca de una ubicación",
+            description = "De cada cadena, la sucursal más barata dentro del radio (por defecto 5 km, "
+                    + "máximo 30), con su dirección y coordenadas para navegar hasta ella. Los precios "
+                    + "son por sucursal, no el mínimo de la cadena en todo el país. Responde 200 con "
+                    + "la lista vacía si no hay sucursales con precio en el radio.")
+    public ResponseEntity<SepaSucursalesCercanasResponse> getSucursalesCercanas(
+            @PathVariable String ean,
+            @Parameter(description = "Latitud del punto de búsqueda") @RequestParam double lat,
+            @Parameter(description = "Longitud del punto de búsqueda") @RequestParam double lng,
+            @Parameter(description = "Radio en km (1 a 30)") @RequestParam(defaultValue = "5") double radiusKm
+    ) {
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ubicación inválida");
+        }
+        String normalizado = ProductoImagenService.normalizarEan(ean);
+        if (normalizado == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El código escaneado no es un EAN válido: " + ean);
+        }
+        double radio = Double.isFinite(radiusKm) && radiusKm >= 1 ? Math.min(radiusKm, RADIO_MAXIMO_KM) : RADIO_DEFECTO_KM;
+
+        // El EAN tal cual vino primero: SEPA lo publica con formatos mezclados.
+        Set<String> eans = new LinkedHashSet<>(List.of(ean.trim(), normalizado));
+        var sucursales = sucursalPreciosService.masBaratasCerca(eans, lat, lng, radio);
+
+        var fecha = eans.stream()
+                .map(sepaProductoRepository::findByEan)
+                .flatMap(Optional::stream)
+                .map(SepaProducto::getFechaDataset)
+                .findFirst()
+                .orElse(null);
+
+        return ResponseEntity.ok(new SepaSucursalesCercanasResponse(normalizado, radio, fecha, sucursales));
     }
 
     /** Camino normal: el producto está en el snapshot de SEPA. */

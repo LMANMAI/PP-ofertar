@@ -118,9 +118,26 @@ public class SepaService {
      */
     public SepaResource scan(String dia, String comercio, String producto, String ean,
                              Consumer<SepaPrecioResponse> consumer) {
+        return scan(dia, comercio, producto, ean, consumer, null);
+    }
+
+    /** Recibe, por cada comercio y antes de sus filas de productos, dónde están sus sucursales. */
+    @FunctionalInterface
+    public interface ComercioListener {
+        void onComercio(SepaComercioSucursales comercio);
+    }
+
+    /**
+     * Igual que {@link #scan(String, String, String, String, Consumer)}, pero además
+     * avisa al {@code listener} de cada comercio con sus sucursales. Solo lo usa la
+     * sincronización del snapshot; la consulta en vivo no lo necesita y no paga la
+     * lectura de sucursales.csv.
+     */
+    public SepaResource scan(String dia, String comercio, String producto, String ean,
+                             Consumer<SepaPrecioResponse> consumer, ComercioListener listener) {
         SepaResource resource = resolveResource(dia);
         Path zipPath = downloadWithCache(resource);
-        processOuterZip(zipPath, comercio, producto, ean, consumer);
+        processOuterZip(zipPath, comercio, producto, ean, consumer, listener);
         return resource;
     }
 
@@ -352,7 +369,7 @@ public class SepaService {
     // ── 3/4. Descomprimir zips anidados, normalizar y emitir ─────────
 
     private void processOuterZip(Path zipPath, String comercio, String producto, String ean,
-                                 Consumer<SepaPrecioResponse> consumer) {
+                                 Consumer<SepaPrecioResponse> consumer, ComercioListener listener) {
         String comercioFilter = normalizeOrNull(comercio);
         String productoFilter = normalizeOrNull(producto);
         String eanFilter = (ean == null || ean.isBlank()) ? null : ean.trim();
@@ -375,7 +392,7 @@ public class SepaService {
                     try (InputStream in = zipFile.getInputStream(entry)) {
                         Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
                     }
-                    processInnerZip(tmp, comercioFilter, productoFilter, eanFilter, consumer);
+                    processInnerZip(tmp, comercioFilter, productoFilter, eanFilter, consumer, listener);
                 } finally {
                     Files.deleteIfExists(tmp);
                 }
@@ -387,7 +404,8 @@ public class SepaService {
     }
 
     private void processInnerZip(Path innerZipPath, String comercioFilter, String productoFilter,
-                                 String eanFilter, Consumer<SepaPrecioResponse> consumer) throws IOException {
+                                 String eanFilter, Consumer<SepaPrecioResponse> consumer,
+                                 ComercioListener listener) throws IOException {
         if (Files.size(innerZipPath) == 0) {
             return; // hay comercios sin datos en el dataset (zip interno vacío)
         }
@@ -406,6 +424,12 @@ public class SepaService {
                     && !cuit.equals(comercioFilter)
                     && !idComercio.equals(comercioFilter)) {
                 return; // este comercio no interesa: no parseamos sus productos
+            }
+
+            if (listener != null) {
+                Map<String, String> banderas = readBanderas(zipFile);
+                listener.onComercio(new SepaComercioSucursales(
+                        idComercio, razonSocial, readSucursales(zipFile, idComercio, banderas)));
             }
 
             // Segunda pasada: productos.csv en streaming
@@ -444,6 +468,7 @@ public class SepaService {
                                 .comercioCuit(cuit)
                                 .comercioRazonSocial(razonSocial)
                                 .bandera(bandera)
+                                .banderaId(get(f, cols, "id_bandera"))
                                 .sucursalId(get(f, cols, "id_sucursal"))
                                 .productoId(get(f, cols, "id_producto"))
                                 .ean(ean)
@@ -489,7 +514,7 @@ public class SepaService {
             if (headerLine == null || dataLine == null) {
                 return info;
             }
-            String[] headers = headerLine.split("\\|", -1);
+            String[] headers = sinBom(headerLine).split("\\|", -1);
             String[] values = dataLine.split("\\|", -1);
             for (int i = 0; i < headers.length && i < values.length; i++) {
                 info.put(headers[i].trim().toLowerCase(Locale.ROOT), values[i].trim());
@@ -498,11 +523,128 @@ public class SepaService {
         return info;
     }
 
+    /** Límites de Argentina: lo que cae afuera es una fila mal armada, no una sucursal. */
+    private static final double LAT_MIN = -56.0, LAT_MAX = -21.0, LNG_MIN = -74.0, LNG_MAX = -53.0;
+
+    /**
+     * Todas las filas de comercio.csv (una por bandera): id_bandera -> nombre comercial.
+     * {@link #readComercioCsv} solo lee la primera, que alcanza para el comercio pero no
+     * para nombrar cada sucursal: Cencosud es Jumbo, Disco y Vea.
+     */
+    private Map<String, String> readBanderas(ZipFile zipFile) throws IOException {
+        Map<String, String> banderas = new HashMap<>();
+        ZipEntry entry = findEntry(zipFile, "comercio", "sucursal");
+        if (entry == null) {
+            return banderas;
+        }
+        try (InputStream is = zipFile.getInputStream(entry);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            String headerLine = reader.readLine();
+            if (headerLine == null) {
+                return banderas;
+            }
+            Map<String, Integer> cols = headerIndex(headerLine);
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] f = line.split("\\|", -1);
+                String id = get(f, cols, "id_bandera");
+                String nombre = get(f, cols, "comercio_bandera_nombre");
+                if (!id.isBlank() && !nombre.isBlank()) {
+                    banderas.put(id, nombre);
+                }
+            }
+        }
+        return banderas;
+    }
+
+    /**
+     * Sucursales de un comercio con su dirección y coordenadas. Descarta las que no
+     * traen coordenadas válidas dentro de Argentina: sin ubicación no se pueden
+     * ofrecer como "cerca", y el dataset trae filas con las columnas corridas.
+     */
+    private List<SepaSucursalData> readSucursales(ZipFile zipFile, String comercioId,
+                                                  Map<String, String> banderas) throws IOException {
+        List<SepaSucursalData> out = new ArrayList<>();
+        ZipEntry entry = findEntry(zipFile, "sucursales", null);
+        if (entry == null) {
+            return out;
+        }
+        try (InputStream is = zipFile.getInputStream(entry);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            String headerLine = reader.readLine();
+            if (headerLine == null) {
+                return out;
+            }
+            Map<String, Integer> cols = headerIndex(headerLine);
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] f = line.split("\\|", -1);
+                String sucursalId = get(f, cols, "id_sucursal");
+                if (sucursalId.isBlank()) continue; // línea de cierre/basura
+
+                Double lat = coordenada(get(f, cols, "sucursales_latitud"), LAT_MIN, LAT_MAX);
+                Double lng = coordenada(get(f, cols, "sucursales_longitud"), LNG_MIN, LNG_MAX);
+                if (lat == null || lng == null) continue;
+
+                String banderaId = get(f, cols, "id_bandera");
+                String calle = get(f, cols, "sucursales_calle");
+                String numero = get(f, cols, "sucursales_numero");
+                String direccion = (calle + " " + (numero.equals("0") ? "" : numero)).trim();
+
+                out.add(new SepaSucursalData(
+                        comercioId,
+                        banderaId,
+                        sucursalId,
+                        banderas.get(banderaId),
+                        get(f, cols, "sucursales_nombre"),
+                        get(f, cols, "sucursales_tipo"),
+                        direccion,
+                        get(f, cols, "sucursales_localidad"),
+                        get(f, cols, "sucursales_provincia"),
+                        lat,
+                        lng));
+            }
+        }
+        return out;
+    }
+
+    private static Double coordenada(String value, double min, double max) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            double d = Double.parseDouble(value.replace(",", "."));
+            return Double.isFinite(d) && d >= min && d <= max ? d : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static ZipEntry findEntry(ZipFile zipFile, String contains, String excludes) {
+        Enumeration<? extends ZipEntry> en = zipFile.entries();
+        while (en.hasMoreElements()) {
+            ZipEntry e = en.nextElement();
+            if (e.isDirectory()) continue;
+            String name = e.getName().toLowerCase(Locale.ROOT);
+            if (name.contains(contains) && (excludes == null || !name.contains(excludes))) {
+                return e;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Varios comercio.csv del dataset empiezan con BOM UTF-8. Sin sacarlo, la primera
+     * columna se llama "\uFEFFid_comercio": el id del comercio queda vacío y los
+     * nombres curados (Carrefour, Cencosud, Toledo...) nunca se aplican.
+     */
+    private static String sinBom(String header) {
+        return header != null && !header.isEmpty() && header.charAt(0) == '\uFEFF' ? header.substring(1) : header;
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────
 
     private Map<String, Integer> headerIndex(String headerLine) {
         Map<String, Integer> cols = new HashMap<>();
-        String[] headers = headerLine.split("\\|", -1);
+        String[] headers = sinBom(headerLine).split("\\|", -1);
         for (int i = 0; i < headers.length; i++) {
             cols.put(headers[i].trim().toLowerCase(Locale.ROOT), i);
         }
