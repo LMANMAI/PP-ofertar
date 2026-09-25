@@ -19,5 +19,12 @@ public class UserProfileResponse {
     private String profilePicture;
     private String address;
     private String phone;
+<<<<<<< HEAD
+=======
+    private boolean alternativeBrandsEnabled;
+    private String referralCode;
+    private int points;
+    private boolean offersPushEnabled;
+>>>>>>> ad31e45 (Merge pull request #13 from LMANMAI/feature/push-notifications)
     private LocalDateTime createdAt;
 }

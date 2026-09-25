@@ -61,6 +61,13 @@ public class AuthService {
                 .profilePicture(user.getProfilePicture())
                 .address(user.getAddress())
                 .phone(user.getPhone())
+<<<<<<< HEAD
+=======
+                .alternativeBrandsEnabled(user.isAlternativeBrandsEnabled())
+                .referralCode(user.getReferralCode())
+                .points(user.getPoints())
+                .offersPushEnabled(user.isOffersPushEnabled())
+>>>>>>> ad31e45 (Merge pull request #13 from LMANMAI/feature/push-notifications)
                 .createdAt(user.getCreatedAt())
                 .build();
 

@@ -20,4 +20,15 @@ public class UpdateProfileRequest {
 
     @Size(max = 20)
     private String phone;
+<<<<<<< HEAD
+=======
+
+    /** Null leaves the current preference untouched (all fields here are
+     * partial-update style), so the boxed type is deliberate. */
+    private Boolean alternativeBrandsEnabled;
+
+    /** Gates offer and re-engagement push notifications. Ticket/referral
+     * pushes are transactional and not covered by this flag. */
+    private Boolean offersPushEnabled;
+>>>>>>> ad31e45 (Merge pull request #13 from LMANMAI/feature/push-notifications)
 }

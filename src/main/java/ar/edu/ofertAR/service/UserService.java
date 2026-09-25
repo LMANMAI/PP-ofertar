@@ -36,6 +36,15 @@ public class UserService {
         if (request.getPhone() != null) {
             user.setPhone(request.getPhone());
         }
+<<<<<<< HEAD
+=======
+        if (request.getAlternativeBrandsEnabled() != null) {
+            user.setAlternativeBrandsEnabled(request.getAlternativeBrandsEnabled());
+        }
+        if (request.getOffersPushEnabled() != null) {
+            user.setOffersPushEnabled(request.getOffersPushEnabled());
+        }
+>>>>>>> ad31e45 (Merge pull request #13 from LMANMAI/feature/push-notifications)
 
         userRepository.save(user);
 
@@ -67,6 +76,13 @@ public class UserService {
                 .profilePicture(user.getProfilePicture())
                 .address(user.getAddress())
                 .phone(user.getPhone())
+<<<<<<< HEAD
+=======
+                .alternativeBrandsEnabled(user.isAlternativeBrandsEnabled())
+                .referralCode(user.getReferralCode())
+                .points(user.getPoints())
+                .offersPushEnabled(user.isOffersPushEnabled())
+>>>>>>> ad31e45 (Merge pull request #13 from LMANMAI/feature/push-notifications)
                 .createdAt(user.getCreatedAt())
                 .build();
     }
