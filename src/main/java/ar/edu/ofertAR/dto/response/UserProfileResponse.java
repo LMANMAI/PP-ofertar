@@ -18,7 +18,6 @@ public class UserProfileResponse {
     private String email;
     private String profilePicture;
     private String address;
-    private String phone;
     private boolean alternativeBrandsEnabled;
     private String referralCode;
     private int points;

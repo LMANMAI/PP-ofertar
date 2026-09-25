@@ -1,5 +1,6 @@
 package ar.edu.ofertAR.dto.request;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -19,8 +20,16 @@ public class UpdateProfileRequest {
     @Size(max = 300)
     private String address;
 
-    @Size(max = 20)
-    private String phone;
+    /** Null leaves the current email untouched. A different email also needs
+     * {@link #currentPassword}: it is the login identity and where password
+     * reset codes are sent, so a stolen session alone must not be able to move it. */
+    @Email(message = "Formato de email inválido")
+    @Size(max = 150, message = "El email es demasiado largo")
+    private String email;
+
+    /** Only read when {@link #email} changes. */
+    @Size(max = 100)
+    private String currentPassword;
 
     /** Null leaves the current preference untouched (all fields here are
      * partial-update style), so the boxed type is deliberate. */
