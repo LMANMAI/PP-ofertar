@@ -56,6 +56,28 @@ public class SepaSnapshotService {
     private static final String TABLA_COM_STAGING = "sepa_precio_comercio_staging";
     private static final String TABLA_COM_VIEJA = "sepa_precio_comercio_old";
 
+    private static final String TABLA_SUC = "sepa_sucursal";
+    private static final String TABLA_SUC_STAGING = "sepa_sucursal_staging";
+    private static final String TABLA_SUC_VIEJA = "sepa_sucursal_old";
+
+    private static final String TABLA_GRUPO = "sepa_precio_grupo";
+    private static final String TABLA_GRUPO_STAGING = "sepa_precio_grupo_staging";
+    private static final String TABLA_GRUPO_VIEJA = "sepa_precio_grupo_old";
+
+    private static final String INSERT_SUCURSAL = "INSERT INTO " + TABLA_SUC_STAGING
+            + " (id, comercio_id, bandera_id, sucursal_id, bandera, nombre, tipo, direccion, "
+            + "localidad, provincia, latitud, longitud) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+    private static final String INSERT_GRUPO = "INSERT INTO " + TABLA_GRUPO_STAGING
+            + " (ean, comercio_id, precio, cantidad_sucursales, sucursales) VALUES (?, ?, ?, ?, ?)";
+
+    /**
+     * Cada grupo lleva la lista de sucursales de un precio (hasta unos miles de ids),
+     * así que sus lotes son más chicos que los del resto: 200 filas de 6 KB caben en
+     * el max_allowed_packet más chico, 1000 podrían no caber.
+     */
+    private static final int LOTE_GRUPOS = 200;
+
     private static final String INSERT_COMERCIO = "INSERT INTO " + TABLA_COM_STAGING
             + " (ean, comercio_id, bandera, razon_social, precio_minimo, precio_maximo, "
             + "cantidad_sucursales, fecha_dataset) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
@@ -78,6 +100,8 @@ public class SepaSnapshotService {
     private final AtomicLong filasProcesadas = new AtomicLong();
     private final AtomicLong productosInsertados = new AtomicLong();
     private final AtomicLong preciosComercioInsertados = new AtomicLong();
+    private final AtomicLong sucursalesInsertadas = new AtomicLong();
+    private final AtomicLong gruposInsertados = new AtomicLong();
     private final AtomicReference<SepaSyncEstadoResponse> estado = new AtomicReference<>(
             SepaSyncEstadoResponse.builder().estado(SepaSyncEstadoResponse.Estado.IDLE).build());
 
@@ -194,6 +218,8 @@ public class SepaSnapshotService {
         filasProcesadas.set(0);
         productosInsertados.set(0);
         preciosComercioInsertados.set(0);
+        sucursalesInsertadas.set(0);
+        gruposInsertados.set(0);
 
         // La fecha del dataset se necesita antes de empezar a volcar filas,
         // porque va en cada INSERT del desglose por comercio.
@@ -213,7 +239,7 @@ public class SepaSnapshotService {
             }
             byEan.computeIfAbsent(ean, k -> new Agg(p.descripcion(), p.marca())).add(precio);
             acumulador.acumular(p, precio);
-        });
+        }, acumulador::iniciarComercio);
 
         acumulador.volcar();   // el último comercio del dataset
         cargarProductos(byEan, fecha);
@@ -221,8 +247,10 @@ public class SepaSnapshotService {
         swap();
 
         long seconds = (System.currentTimeMillis() - start) / 1000;
-        log.info("SEPA snapshot: {} filas -> {} productos y {} precios por comercio en {}s",
-                filasProcesadas.get(), byEan.size(), preciosComercioInsertados.get(), seconds);
+        log.info("SEPA snapshot: {} filas -> {} productos, {} precios por comercio, {} sucursales y "
+                        + "{} grupos de precio por sucursal en {}s",
+                filasProcesadas.get(), byEan.size(), preciosComercioInsertados.get(),
+                sucursalesInsertadas.get(), gruposInsertados.get(), seconds);
 
         return SepaSyncResponse.builder()
                 .dia(resource.dia())
@@ -249,9 +277,49 @@ public class SepaSnapshotService {
         private String comercioId;
         private String bandera;
         private String razonSocial;
+        private SepaGruposComercio grupos;
 
         AcumuladorComercio(LocalDate fecha) {
             this.fecha = fecha;
+        }
+
+        /**
+         * Llega antes de las filas de cada comercio: cierra el anterior, guarda sus
+         * sucursales y arma el agrupador de precios por sucursal para el nuevo.
+         */
+        void iniciarComercio(SepaComercioSucursales comercio) {
+            volcar();
+
+            Map<String, Integer> ids = new HashMap<>(comercio.sucursales().size() * 2);
+            List<Object[]> batch = new ArrayList<>(batchSize);
+            for (SepaSucursalData s : comercio.sucursales()) {
+                if (ids.containsKey(s.clave())) {
+                    continue; // fila repetida en sucursales.csv
+                }
+                int id = (int) (sucursalesInsertadas.get() + batch.size() + 1);
+                ids.put(s.clave(), id);
+                batch.add(new Object[]{
+                        id,
+                        truncate(s.comercioId(), 20),
+                        truncate(s.banderaId(), 20),
+                        truncate(s.sucursalId(), 40),
+                        truncate(s.bandera(), 255),
+                        truncate(s.nombre(), 255),
+                        truncate(s.tipo(), 60),
+                        truncate(s.direccion(), 255),
+                        truncate(s.localidad(), 120),
+                        truncate(s.provincia(), 20),
+                        s.latitud(),
+                        s.longitud()
+                });
+                if (batch.size() == batchSize) {
+                    insertarLote(INSERT_SUCURSAL, batch, sucursalesInsertadas);
+                }
+            }
+            if (!batch.isEmpty()) {
+                insertarLote(INSERT_SUCURSAL, batch, sucursalesInsertadas);
+            }
+            grupos = new SepaGruposComercio(ids);
         }
 
         void acumular(ar.edu.ofertAR.dto.response.SepaPrecioResponse p, BigDecimal precio) {
@@ -263,6 +331,9 @@ public class SepaSnapshotService {
             bandera = p.bandera();
             razonSocial = p.comercioRazonSocial();
             porEan.computeIfAbsent(p.ean(), k -> new Agg(null, null)).add(precio);
+            if (grupos != null) {
+                grupos.agregar(p.ean(), p.banderaId(), p.sucursalId(), precio);
+            }
         }
 
         void volcar() {
@@ -290,6 +361,31 @@ public class SepaSnapshotService {
                 insertarLote(INSERT_COMERCIO, batch, preciosComercioInsertados);
             }
             porEan.clear();
+            volcarGrupos();
+        }
+
+        /** Los precios de este comercio por sucursal, agrupados; ver {@link SepaGruposComercio}. */
+        private void volcarGrupos() {
+            if (grupos == null || grupos.estaVacio()) {
+                return;
+            }
+            List<Object[]> lote = new ArrayList<>(LOTE_GRUPOS);
+            grupos.paraCadaGrupo(g -> {
+                lote.add(new Object[]{
+                        truncate(g.ean(), 20),
+                        truncate(comercioId, 20),
+                        g.precio(),
+                        g.cantidad(),
+                        g.sucursales()
+                });
+                if (lote.size() == LOTE_GRUPOS) {
+                    insertarLote(INSERT_GRUPO, lote, gruposInsertados);
+                }
+            });
+            if (!lote.isEmpty()) {
+                insertarLote(INSERT_GRUPO, lote, gruposInsertados);
+            }
+            grupos.limpiar();
         }
     }
 
@@ -344,21 +440,28 @@ public class SepaSnapshotService {
     }
 
     private void crearStaging() {
-        for (String t : new String[]{TABLA_STAGING, TABLA_VIEJA, TABLA_COM_STAGING, TABLA_COM_VIEJA}) {
+        for (String t : new String[]{TABLA_STAGING, TABLA_VIEJA, TABLA_COM_STAGING, TABLA_COM_VIEJA,
+                TABLA_SUC_STAGING, TABLA_SUC_VIEJA, TABLA_GRUPO_STAGING, TABLA_GRUPO_VIEJA}) {
             jdbcTemplate.execute("DROP TABLE IF EXISTS " + t);
         }
         // LIKE copia columnas, tipos, AUTO_INCREMENT e índices de la tabla viva
         jdbcTemplate.execute("CREATE TABLE " + TABLA_STAGING + " LIKE " + TABLA);
         jdbcTemplate.execute("CREATE TABLE " + TABLA_COM_STAGING + " LIKE " + TABLA_COM);
+        jdbcTemplate.execute("CREATE TABLE " + TABLA_SUC_STAGING + " LIKE " + TABLA_SUC);
+        jdbcTemplate.execute("CREATE TABLE " + TABLA_GRUPO_STAGING + " LIKE " + TABLA_GRUPO);
         // Insertar con los índices secundarios armados cuesta caro: los sacamos
         // y los reconstruimos de una al final. Si falla, seguimos igual.
         soltarIndice(TABLA_STAGING, "idx_sepa_producto_descripcion");
         soltarIndice(TABLA_COM_STAGING, "idx_sepa_precio_comercio_ean");
+        soltarIndice(TABLA_GRUPO_STAGING, "idx_sepa_precio_grupo_ean");
+        soltarIndice(TABLA_SUC_STAGING, "idx_sepa_sucursal_ubicacion");
     }
 
     private void reconstruirIndices() {
         crearIndice(TABLA_STAGING, "idx_sepa_producto_descripcion", "descripcion");
         crearIndice(TABLA_COM_STAGING, "idx_sepa_precio_comercio_ean", "ean");
+        crearIndice(TABLA_GRUPO_STAGING, "idx_sepa_precio_grupo_ean", "ean");
+        crearIndice(TABLA_SUC_STAGING, "idx_sepa_sucursal_ubicacion", "latitud, longitud");
     }
 
     private void soltarIndice(String tabla, String indice) {
@@ -389,9 +492,15 @@ public class SepaSnapshotService {
                 + TABLA + " TO " + TABLA_VIEJA + ", "
                 + TABLA_STAGING + " TO " + TABLA + ", "
                 + TABLA_COM + " TO " + TABLA_COM_VIEJA + ", "
-                + TABLA_COM_STAGING + " TO " + TABLA_COM);
+                + TABLA_COM_STAGING + " TO " + TABLA_COM + ", "
+                + TABLA_SUC + " TO " + TABLA_SUC_VIEJA + ", "
+                + TABLA_SUC_STAGING + " TO " + TABLA_SUC + ", "
+                + TABLA_GRUPO + " TO " + TABLA_GRUPO_VIEJA + ", "
+                + TABLA_GRUPO_STAGING + " TO " + TABLA_GRUPO);
         jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_VIEJA);
         jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_COM_VIEJA);
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_SUC_VIEJA);
+        jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_GRUPO_VIEJA);
         log.info("SEPA snapshot: swap completo, {} productos y {} precios por comercio activos",
                 productosInsertados.get(), preciosComercioInsertados.get());
     }
