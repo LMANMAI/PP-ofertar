@@ -30,7 +30,13 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
+<<<<<<< HEAD
                 .requestMatchers("/auth/**").permitAll()
+=======
+                .requestMatchers("/auth/**", "/docs", "/docs/**", "/api-docs", "/api-docs/**", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/sepa/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/legal/**").permitAll()
+>>>>>>> 3bebbda (Merge pull request #16 from LMANMAI/feature/legal-terms)
                 .anyRequest().authenticated()
             )
             .sessionManagement(session ->
