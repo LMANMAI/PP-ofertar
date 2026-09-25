@@ -31,6 +31,10 @@ public class AuthService {
                 .name(request.getName())
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
+<<<<<<< HEAD
+=======
+                .referralCode(pointsService.generateUniqueReferralCode())
+>>>>>>> 1a707ae (Merge pull request #15 from LMANMAI/feature/change-email)
                 .build();
 
         userRepository.save(user);
@@ -60,7 +64,14 @@ public class AuthService {
                 .email(user.getEmail())
                 .profilePicture(user.getProfilePicture())
                 .address(user.getAddress())
+<<<<<<< HEAD
                 .phone(user.getPhone())
+=======
+                .alternativeBrandsEnabled(user.isAlternativeBrandsEnabled())
+                .referralCode(user.getReferralCode())
+                .points(user.getPoints())
+                .offersPushEnabled(user.isOffersPushEnabled())
+>>>>>>> 1a707ae (Merge pull request #15 from LMANMAI/feature/change-email)
                 .createdAt(user.getCreatedAt())
                 .build();
 

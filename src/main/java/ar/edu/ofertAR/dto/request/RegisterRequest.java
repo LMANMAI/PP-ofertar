@@ -23,4 +23,11 @@ public class RegisterRequest {
     @NotBlank(message = "La contraseña es obligatoria")
     @Size(min = 6, max = 100, message = "La contraseña debe tener entre 6 y 100 caracteres")
     private String password;
+<<<<<<< HEAD
+=======
+
+    /** Another user's invite code. Optional — an unknown or self-code is
+     * ignored silently rather than blocking the signup. */
+    private String referralCode;
+>>>>>>> 1a707ae (Merge pull request #15 from LMANMAI/feature/change-email)
 }

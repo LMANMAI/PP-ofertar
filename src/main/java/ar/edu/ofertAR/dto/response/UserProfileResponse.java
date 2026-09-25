@@ -18,6 +18,13 @@ public class UserProfileResponse {
     private String email;
     private String profilePicture;
     private String address;
+<<<<<<< HEAD
     private String phone;
+=======
+    private boolean alternativeBrandsEnabled;
+    private String referralCode;
+    private int points;
+    private boolean offersPushEnabled;
+>>>>>>> 1a707ae (Merge pull request #15 from LMANMAI/feature/change-email)
     private LocalDateTime createdAt;
 }

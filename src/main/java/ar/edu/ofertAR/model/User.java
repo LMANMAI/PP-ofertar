@@ -42,8 +42,47 @@ public class User implements UserDetails {
     @Column(length = 300)
     private String address;
 
+<<<<<<< HEAD
     @Column(length = 20)
     private String phone;
+=======
+    /** Opt-in to being shown offers on the same kind of product from a
+     * different brand (e.g. Elite toilet paper when the user buys Higienol). */
+    @Column(name = "alternative_brands_enabled", nullable = false)
+    @Builder.Default
+    private boolean alternativeBrandsEnabled = true;
+
+    /** Search radius (km) used when listing nearby stores on the map. */
+    @Column(name = "store_search_radius_km", nullable = false)
+    @Builder.Default
+    private int storeSearchRadiusKm = 5;
+
+    /** This account's own invite code, generated once at signup. Left
+     * nullable at the DB level (unlike most fields here) purely so
+     * ddl-auto's ALTER TABLE doesn't choke backfilling a UNIQUE column
+     * across every pre-existing row in the live users table; every account
+     * created from here on always gets one. */
+    @Column(name = "referral_code", unique = true, length = 12)
+    private String referralCode;
+
+    /** Denormalized balance — always updated in the same transaction as the
+     * PointsTransaction row that changed it, so it never drifts from the
+     * ledger it summarizes. */
+    @Column(nullable = false)
+    @Builder.Default
+    private int points = 0;
+
+    /** Gates offer and re-engagement push notifications; ticket/referral
+     * pushes are transactional and always go out regardless of this flag. */
+    @Column(name = "offers_push_enabled", nullable = false)
+    @Builder.Default
+    private boolean offersPushEnabled = true;
+
+    /** Last time the reactivation job nudged this user, so it fires once per
+     * dormant stretch instead of every day the job runs. */
+    @Column(name = "last_reactivation_nudge_at")
+    private LocalDateTime lastReactivationNudgeAt;
+>>>>>>> 1a707ae (Merge pull request #15 from LMANMAI/feature/change-email)
 
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
