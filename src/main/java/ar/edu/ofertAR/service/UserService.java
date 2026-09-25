@@ -39,6 +39,9 @@ public class UserService {
         if (request.getAlternativeBrandsEnabled() != null) {
             user.setAlternativeBrandsEnabled(request.getAlternativeBrandsEnabled());
         }
+        if (request.getOffersPushEnabled() != null) {
+            user.setOffersPushEnabled(request.getOffersPushEnabled());
+        }
 
         userRepository.save(user);
 
@@ -73,6 +76,7 @@ public class UserService {
                 .alternativeBrandsEnabled(user.isAlternativeBrandsEnabled())
                 .referralCode(user.getReferralCode())
                 .points(user.getPoints())
+                .offersPushEnabled(user.isOffersPushEnabled())
                 .createdAt(user.getCreatedAt())
                 .build();
     }

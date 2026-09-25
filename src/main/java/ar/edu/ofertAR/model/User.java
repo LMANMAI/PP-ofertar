@@ -73,6 +73,17 @@ public class User implements UserDetails {
     @Builder.Default
     private int points = 0;
 
+    /** Gates offer and re-engagement push notifications; ticket/referral
+     * pushes are transactional and always go out regardless of this flag. */
+    @Column(name = "offers_push_enabled", nullable = false)
+    @Builder.Default
+    private boolean offersPushEnabled = true;
+
+    /** Last time the reactivation job nudged this user, so it fires once per
+     * dormant stretch instead of every day the job runs. */
+    @Column(name = "last_reactivation_nudge_at")
+    private LocalDateTime lastReactivationNudgeAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();

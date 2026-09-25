@@ -38,13 +38,15 @@ class PointsServiceTest {
     @Mock private PointsTransactionRepository pointsTransactionRepository;
     @Mock private TicketRepository ticketRepository;
     @Mock private TransactionTemplate transactionTemplate;
+    @Mock private PushNotificationService pushNotificationService;
 
     private PointsService pointsService;
 
     @BeforeEach
     void setUp() {
         pointsService = new PointsService(
-                userRepository, referralRepository, pointsTransactionRepository, ticketRepository, transactionTemplate);
+                userRepository, referralRepository, pointsTransactionRepository, ticketRepository,
+                transactionTemplate, pushNotificationService);
     }
 
     private static User user(Long id, String referralCode, int points) {
@@ -152,6 +154,7 @@ class PointsServiceTest {
             assertEquals(ReferralStatus.ACTIVATED, referral.getStatus());
             assertNotNull(referral.getActivatedAt());
             verify(referralRepository).save(referral);
+            verify(pushNotificationService).notifyReferralActivated(referrer);
         }
 
         @Test
@@ -174,6 +177,7 @@ class PointsServiceTest {
             assertEquals(ReferralStatus.ACTIVATED, referral.getStatus(), "igual se marca activado");
             assertNotNull(referral.getActivatedAt());
             verifyNoInteractions(pointsTransactionRepository);
+            verifyNoInteractions(pushNotificationService);
         }
 
         @Test

@@ -40,6 +40,7 @@ public class TicketProcessingService {
     private final ExecutorService ocrExecutor;
     private final TransactionTemplate transactionTemplate;
     private final PointsService pointsService;
+    private final PushNotificationService pushNotificationService;
 
     /** Page images already read off the request, so the upload can return. */
     public record PagePayload(byte[] bytes, String contentType) {}
@@ -79,6 +80,7 @@ public class TicketProcessingService {
                     .ifPresent(ticket -> {
                         ticket.setStatus(TicketStatus.FAILED);
                         ticketRepository.save(ticket);
+                        pushNotificationService.notifyTicketFailed(ticket);
                     }));
         } catch (Exception e) {
             log.error("Tampoco se pudo marcar como fallido el ticket {}: {}",
@@ -148,6 +150,7 @@ public class TicketProcessingService {
                         ticket.getId(), existing.get().getId(), mergedTicketId);
                 ticket.setStatus(TicketStatus.FAILED);
                 ticketRepository.save(ticket);
+                pushNotificationService.notifyTicketFailed(ticket);
                 return;
             }
         }
@@ -205,6 +208,9 @@ public class TicketProcessingService {
 
         if (ticket.getStatus() == TicketStatus.PROCESSED) {
             pointsService.onTicketProcessed(ticket);
+            pushNotificationService.notifyTicketProcessed(ticket);
+        } else {
+            pushNotificationService.notifyTicketFailed(ticket);
         }
     }
 
