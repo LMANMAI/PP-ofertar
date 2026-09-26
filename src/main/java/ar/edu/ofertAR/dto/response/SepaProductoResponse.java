@@ -1,5 +1,6 @@
 package ar.edu.ofertAR.dto.response;
 
+import org.springframework.lang.Nullable;
 import ar.edu.ofertAR.model.SepaProducto;
 import lombok.Builder;
 
@@ -15,14 +16,14 @@ import java.time.LocalDate;
 public record SepaProductoResponse(
         Long id,
         String ean,
-        String descripcion,
-        String marca,
-        BigDecimal precioMinimo,
-        BigDecimal precioPromedio,
-        BigDecimal precioMaximo,
+        @Nullable String descripcion,
+        @Nullable String marca,
+        @Nullable BigDecimal precioMinimo,
+        @Nullable BigDecimal precioPromedio,
+        @Nullable BigDecimal precioMaximo,
         int cantidadOfertas,
-        LocalDate fechaDataset,
-        String imagenUrl
+        @Nullable LocalDate fechaDataset,
+        @Nullable String imagenUrl
 ) {
     public static SepaProductoResponse from(SepaProducto p, String imagenUrl) {
         return SepaProductoResponse.builder()

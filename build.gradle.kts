@@ -63,4 +63,6 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // Para regenerar openapi.json: ./gradlew test -Dopenapi.update=true
+    systemProperty("openapi.update", System.getProperty("openapi.update", "false"))
 }

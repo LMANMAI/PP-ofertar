@@ -162,3 +162,18 @@ La API quedara disponible en `http://localhost:8080`
 ## CI/CD
 
 - **Backport automático:** al mergear un PR a `main`, se abre automáticamente un PR de backport hacia `develop`.
+
+---
+
+## Contrato de la API (OpenAPI)
+
+`openapi.json` en la raíz es el contrato que consume el frontend para generar sus tipos. Está versionado y el test
+`OpenApiExportTest` falla si quedó desactualizado. Tras cambiar un DTO o un endpoint:
+
+```bash
+./gradlew test --tests '*OpenApiExportTest' -Dopenapi.update=true
+```
+
+y commitear el `openapi.json` resultante. En los DTO de respuesta (`dto/response`) todo campo es obligatorio y no nulo
+salvo que esté anotado con `@Nullable` (viene siempre, pero puede valer `null`); los valores fijos se declaran con
+`@Schema(allowableValues = ...)`. Después, en el repo de la app: `npm run api:sync && npm run api:types`.

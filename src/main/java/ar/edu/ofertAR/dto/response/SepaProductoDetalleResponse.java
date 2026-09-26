@@ -1,5 +1,6 @@
 package ar.edu.ofertAR.dto.response;
 
+import org.springframework.lang.Nullable;
 import lombok.Builder;
 
 import java.math.BigDecimal;
@@ -25,14 +26,14 @@ public record SepaProductoDetalleResponse(
         boolean sinPrecios,
         /** sepa | externo | ninguna */
         String fuenteDatos,
-        String descripcion,
-        String marca,
-        String imagenUrl,
-        BigDecimal precioMinimo,
-        BigDecimal precioPromedio,
-        BigDecimal precioMaximo,
+        @Nullable String descripcion,
+        @Nullable String marca,
+        @Nullable String imagenUrl,
+        @Nullable BigDecimal precioMinimo,
+        @Nullable BigDecimal precioPromedio,
+        @Nullable BigDecimal precioMaximo,
         int cantidadOfertas,
-        LocalDate fechaDataset,
+        @Nullable LocalDate fechaDataset,
         /** Comercios donde está, del más barato al más caro. Vacío si no hay datos. */
         List<ComercioPrecioResponse> comercios
 ) {}
