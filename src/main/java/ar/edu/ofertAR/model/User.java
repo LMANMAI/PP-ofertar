@@ -6,6 +6,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -80,6 +81,11 @@ public class User implements UserDetails {
      * dormant stretch instead of every day the job runs. */
     @Column(name = "last_reactivation_nudge_at")
     private LocalDateTime lastReactivationNudgeAt;
+
+    /** Tokens issued before this moment are rejected. Bumped on password change
+     * or reset so a stolen session does not survive it; null means no cutoff. */
+    @Column(name = "token_valid_from")
+    private Instant tokenValidFrom;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default

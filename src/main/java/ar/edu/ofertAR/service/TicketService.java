@@ -18,6 +18,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.file.Files;
@@ -80,7 +81,7 @@ public class TicketService {
         List<TicketProcessingService.PagePayload> pages = new ArrayList<>();
         for (MultipartFile file : files) {
             try {
-                pages.add(new TicketProcessingService.PagePayload(file.getBytes(), file.getContentType()));
+                pages.add(new TicketProcessingService.PagePayload(file.getBytes(), detectType(file).mimeType()));
             } catch (IOException e) {
                 log.error("Error al leer archivo del ticket {}: {}", ticket.getId(), e.getMessage());
                 ticket.setStatus(TicketStatus.FAILED);
@@ -252,7 +253,7 @@ public class TicketService {
                 .orElseThrow(() -> new IllegalArgumentException("Ticket no encontrado"));
         deleteImageFile(ticket.getImagePath());
         ticketRepository.delete(ticket);
-        log.info("Ticket {} eliminado por el usuario {}", id, user.getEmail());
+        log.info("Ticket {} eliminado por el usuario {}", id, user.getId());
     }
 
     private void enforceTicketLimit(User user) {
@@ -285,21 +286,33 @@ public class TicketService {
             throw new IllegalArgumentException("El archivo esta vacio");
         }
 
-        String contentType = file.getContentType();
-        if (contentType == null
-                || (!contentType.startsWith("image/") && !contentType.equals("application/pdf"))) {
-            throw new IllegalArgumentException("Solo se aceptan imagenes (jpg, png, etc.) o PDF");
+        detectType(file);
+    }
+
+    /** El tipo se decide por los primeros bytes, no por el Content-Type que declara el cliente. */
+    private FileSniffer.Detected detectType(MultipartFile file) {
+        try (InputStream in = file.getInputStream()) {
+            return FileSniffer.detect(in.readNBytes(FileSniffer.HEADER_BYTES))
+                    .orElseThrow(() -> new IllegalArgumentException("Solo se aceptan imagenes (jpg, png, etc.) o PDF"));
+        } catch (IOException e) {
+            throw new RuntimeException("Error al leer el archivo del ticket", e);
         }
     }
 
     private String saveImage(MultipartFile file) {
         try {
-            Path uploadPath = Paths.get(uploadDir);
+            Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
             Files.createDirectories(uploadPath);
 
-            String filename = UUID.randomUUID() + "_" + file.getOriginalFilename();
-            Path filePath = uploadPath.resolve(filename);
-            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+            // El nombre que manda el cliente se descarta: UUID + extension detectada.
+            String filename = UUID.randomUUID() + "." + detectType(file).extension();
+            Path filePath = uploadPath.resolve(filename).normalize();
+            if (!filePath.startsWith(uploadPath)) {
+                throw new IllegalArgumentException("Nombre de archivo invalido");
+            }
+            try (InputStream in = file.getInputStream()) {
+                Files.copy(in, filePath, StandardCopyOption.REPLACE_EXISTING);
+            }
 
             return filePath.toString();
         } catch (IOException e) {

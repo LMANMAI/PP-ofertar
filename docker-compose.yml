@@ -26,6 +26,7 @@ services:
       DB_USER: root
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
+      OCR_PASSWORD: ${OCR_PASSWORD}
 
 volumes:
   mysql_data:

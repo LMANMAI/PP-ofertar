@@ -342,11 +342,30 @@ public class SepaService {
             }
             Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
             log.info("SEPA: descargado {} ({} MB)", target, Files.size(target) / (1024 * 1024));
+            podarCache(dir, target);
             return target;
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "No se pudo descargar el dataset SEPA: " + e.getMessage(), e);
+        }
+    }
+
+    /** Cada dataset pesa cientos de MB y nunca se borraba: se conservan los dos más recientes. */
+    private void podarCache(Path dir, Path recienDescargado) {
+        try (var archivos = Files.list(dir)) {
+            List<Path> viejos = archivos
+                    .filter(f -> f.getFileName().toString().matches("sepa_.*\\.zip"))
+                    .filter(f -> !f.equals(recienDescargado))
+                    .sorted(java.util.Comparator.comparingLong((Path f) -> f.toFile().lastModified()).reversed())
+                    .skip(1)
+                    .toList();
+            for (Path f : viejos) {
+                Files.deleteIfExists(f);
+                log.info("SEPA: cache viejo eliminado {}", f.getFileName());
+            }
+        } catch (IOException e) {
+            log.warn("SEPA: no se pudo podar el cache: {}", e.getMessage());
         }
     }
 
