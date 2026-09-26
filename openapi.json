@@ -1,0 +1,2273 @@
+{
+  "components" : {
+    "schemas" : {
+      "AlternativeOffer" : {
+        "properties" : {
+          "brand" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "discountPct" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "listPrice" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "price" : {
+            "type" : "number"
+          },
+          "productName" : {
+            "type" : "string"
+          },
+          "retailerName" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "brand", "discountPct", "listPrice", "price", "productName", "retailerName" ],
+        "type" : "object"
+      },
+      "AuthResponse" : {
+        "properties" : {
+          "token" : {
+            "type" : "string"
+          },
+          "user" : {
+            "$ref" : "#/components/schemas/UserProfileResponse"
+          }
+        },
+        "required" : [ "token", "user" ],
+        "type" : "object"
+      },
+      "BestOffer" : {
+        "properties" : {
+          "discountPct" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "imageUrl" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "listPrice" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "price" : {
+            "type" : "number"
+          },
+          "productName" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "promoLabel" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "promoLabels" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "promoUnitPrice" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "requiredQuantity" : {
+            "format" : "int32",
+            "nullable" : true,
+            "type" : "integer"
+          },
+          "retailerName" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "discountPct", "imageUrl", "listPrice", "price", "productName", "promoLabel", "promoLabels", "promoUnitPrice", "requiredQuantity", "retailerName" ],
+        "type" : "object"
+      },
+      "CampaignOffer" : {
+        "properties" : {
+          "activeTo" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "discountPercentages" : {
+            "items" : {
+              "format" : "int32",
+              "type" : "integer"
+            },
+            "type" : "array"
+          },
+          "imageUrl" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "legalText" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "mechanic" : {
+            "enum" : [ "second_unit", "3x2", "2x1", "percentage_off" ],
+            "nullable" : true,
+            "type" : "string"
+          },
+          "offerId" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "percentagesUnverified" : {
+            "type" : "boolean"
+          },
+          "province" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "retailerName" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "activeTo", "discountPercentages", "imageUrl", "legalText", "mechanic", "offerId", "percentagesUnverified", "province", "retailerName" ],
+        "type" : "object"
+      },
+      "CategorySavings" : {
+        "properties" : {
+          "category" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "itemCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalDiscounts" : {
+            "type" : "number"
+          }
+        },
+        "required" : [ "category", "itemCount", "totalDiscounts" ],
+        "type" : "object"
+      },
+      "ChangePasswordRequest" : {
+        "properties" : {
+          "currentPassword" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "newPassword" : {
+            "maxLength" : 100,
+            "minLength" : 6,
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ComercioPrecioResponse" : {
+        "properties" : {
+          "bandera" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "cantidadSucursales" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "comercioId" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "precioMaximo" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "precioMinimo" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "razonSocial" : {
+            "nullable" : true,
+            "type" : "string"
+          }
+        },
+        "required" : [ "bandera", "cantidadSucursales", "comercioId", "precioMaximo", "precioMinimo", "razonSocial" ],
+        "type" : "object"
+      },
+      "FavoriteStoresResponse" : {
+        "properties" : {
+          "chainSlugs" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "radiusKm" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "chainSlugs", "radiusKm" ],
+        "type" : "object"
+      },
+      "ForgotPasswordRequest" : {
+        "properties" : {
+          "email" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "LoginRequest" : {
+        "properties" : {
+          "email" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "password" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "Offer" : {
+        "properties" : {
+          "activeTo" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "brand" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "category" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "discountPct" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "discountPercentages" : {
+            "items" : {
+              "format" : "int32",
+              "type" : "integer"
+            },
+            "nullable" : true,
+            "type" : "array"
+          },
+          "headline" : {
+            "type" : "string"
+          },
+          "id" : {
+            "type" : "string"
+          },
+          "imageUrl" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "kind" : {
+            "enum" : [ "catalog", "campaign" ],
+            "type" : "string"
+          },
+          "legalText" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "listPrice" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "mechanic" : {
+            "enum" : [ "second_unit", "3x2", "2x1", "percentage_off" ],
+            "nullable" : true,
+            "type" : "string"
+          },
+          "percentagesUnverified" : {
+            "type" : "boolean"
+          },
+          "price" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "productName" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "province" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "retailerName" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "retailerSlug" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "url" : {
+            "nullable" : true,
+            "type" : "string"
+          }
+        },
+        "required" : [ "activeTo", "brand", "category", "discountPct", "discountPercentages", "headline", "id", "imageUrl", "kind", "legalText", "listPrice", "mechanic", "percentagesUnverified", "price", "productName", "province", "retailerName", "retailerSlug", "url" ],
+        "type" : "object"
+      },
+      "OfferFeedResponse" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Offer"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "pageSize" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "total" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalPages" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "items", "page", "pageSize", "total", "totalPages" ],
+        "type" : "object"
+      },
+      "PageSepaProductoResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/SepaProductoResponse"
+            },
+            "type" : "array"
+          },
+          "empty" : {
+            "type" : "boolean"
+          },
+          "first" : {
+            "type" : "boolean"
+          },
+          "last" : {
+            "type" : "boolean"
+          },
+          "number" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "numberOfElements" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "pageable" : {
+            "$ref" : "#/components/schemas/PageableObject"
+          },
+          "size" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "sort" : {
+            "$ref" : "#/components/schemas/SortObject"
+          },
+          "totalElements" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalPages" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "PageableObject" : {
+        "properties" : {
+          "offset" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "pageNumber" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "pageSize" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "paged" : {
+            "type" : "boolean"
+          },
+          "sort" : {
+            "$ref" : "#/components/schemas/SortObject"
+          },
+          "unpaged" : {
+            "type" : "boolean"
+          }
+        },
+        "type" : "object"
+      },
+      "PointsBalanceResponse" : {
+        "properties" : {
+          "balance" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "referralCode" : {
+            "nullable" : true,
+            "type" : "string"
+          }
+        },
+        "required" : [ "balance", "referralCode" ],
+        "type" : "object"
+      },
+      "PointsHistoryEntryResponse" : {
+        "properties" : {
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "points" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "reason" : {
+            "enum" : [ "REFERRAL_SIGNUP", "REFERRAL_ACTIVATED", "REFERRAL_RETAINED", "REDEEM" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "createdAt", "description", "id", "points", "reason" ],
+        "type" : "object"
+      },
+      "ProductSavings" : {
+        "properties" : {
+          "barcode" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "category" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "purchaseCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalDiscounts" : {
+            "type" : "number"
+          }
+        },
+        "required" : [ "barcode", "category", "description", "purchaseCount", "totalDiscounts" ],
+        "type" : "object"
+      },
+      "PromoMechanic" : {
+        "properties" : {
+          "imageUrl" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "listPrice" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "productName" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "promoLabels" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "promoUnitPrice" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "requiredQuantity" : {
+            "format" : "int32",
+            "nullable" : true,
+            "type" : "integer"
+          },
+          "retailerName" : {
+            "type" : "string"
+          },
+          "unitPrice" : {
+            "nullable" : true,
+            "type" : "number"
+          }
+        },
+        "required" : [ "imageUrl", "listPrice", "productName", "promoLabels", "promoUnitPrice", "requiredQuantity", "retailerName", "unitPrice" ],
+        "type" : "object"
+      },
+      "RecurringProductResponse" : {
+        "properties" : {
+          "alternativeOffers" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AlternativeOffer"
+            },
+            "type" : "array"
+          },
+          "barcode" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "bestOffer" : {
+            "allOf" : [ {
+              "$ref" : "#/components/schemas/BestOffer"
+            } ],
+            "nullable" : true
+          },
+          "campaignOffers" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CampaignOffer"
+            },
+            "type" : "array"
+          },
+          "category" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "inReferenceTicket" : {
+            "type" : "boolean"
+          },
+          "lastPaidAt" : {
+            "format" : "date-time",
+            "nullable" : true,
+            "type" : "string"
+          },
+          "lastPaidPrice" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "promoMechanics" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PromoMechanic"
+            },
+            "type" : "array"
+          },
+          "purchaseCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "ticketCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalDiscounts" : {
+            "type" : "number"
+          }
+        },
+        "required" : [ "alternativeOffers", "barcode", "bestOffer", "campaignOffers", "category", "description", "inReferenceTicket", "lastPaidAt", "lastPaidPrice", "promoMechanics", "purchaseCount", "ticketCount", "totalDiscounts" ],
+        "type" : "object"
+      },
+      "RedeemRequest" : {
+        "properties" : {
+          "points" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "rewardId" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "RegisterPushTokenRequest" : {
+        "properties" : {
+          "platform" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "token" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "RegisterRequest" : {
+        "properties" : {
+          "email" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "name" : {
+            "maxLength" : 100,
+            "minLength" : 2,
+            "type" : "string"
+          },
+          "password" : {
+            "maxLength" : 100,
+            "minLength" : 6,
+            "type" : "string"
+          },
+          "referralCode" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ResetPasswordRequest" : {
+        "properties" : {
+          "code" : {
+            "minLength" : 1,
+            "pattern" : "\\d{6}",
+            "type" : "string"
+          },
+          "email" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "newPassword" : {
+            "maxLength" : 100,
+            "minLength" : 6,
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "SavingsReportResponse" : {
+        "properties" : {
+          "byCategory" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CategorySavings"
+            },
+            "type" : "array"
+          },
+          "byStore" : {
+            "items" : {
+              "$ref" : "#/components/schemas/StoreSavings"
+            },
+            "type" : "array"
+          },
+          "summary" : {
+            "$ref" : "#/components/schemas/Summary"
+          },
+          "timeline" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TimelineSavings"
+            },
+            "type" : "array"
+          },
+          "topProducts" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ProductSavings"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [ "byCategory", "byStore", "summary", "timeline", "topProducts" ],
+        "type" : "object"
+      },
+      "SepaPrecioResponse" : {
+        "properties" : {
+          "bandera" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "banderaId" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "cantidadPresentacion" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "comercioCuit" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "comercioId" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "comercioRazonSocial" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "descripcion" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "ean" : {
+            "type" : "string"
+          },
+          "leyendaPromo1" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "leyendaPromo2" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "marca" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "precioLista" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "precioPromo1" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "precioPromo2" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "precioReferencia" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "productoId" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "sucursalId" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "unidadMedidaPresentacion" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "unidadMedidaReferencia" : {
+            "nullable" : true,
+            "type" : "string"
+          }
+        },
+        "required" : [ "bandera", "banderaId", "cantidadPresentacion", "comercioCuit", "comercioId", "comercioRazonSocial", "descripcion", "ean", "leyendaPromo1", "leyendaPromo2", "marca", "precioLista", "precioPromo1", "precioPromo2", "precioReferencia", "productoId", "sucursalId", "unidadMedidaPresentacion", "unidadMedidaReferencia" ],
+        "type" : "object"
+      },
+      "SepaPreciosPageResponse" : {
+        "properties" : {
+          "data" : {
+            "items" : {
+              "$ref" : "#/components/schemas/SepaPrecioResponse"
+            },
+            "type" : "array"
+          },
+          "dia" : {
+            "type" : "string"
+          },
+          "fecha" : {
+            "type" : "string"
+          },
+          "page" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "recursoUrl" : {
+            "type" : "string"
+          },
+          "size" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "totalElementos" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalPaginas" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "data", "dia", "fecha", "page", "recursoUrl", "size", "totalElementos", "totalPaginas" ],
+        "type" : "object"
+      },
+      "SepaProductoDetalleResponse" : {
+        "properties" : {
+          "cantidadOfertas" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "comercios" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ComercioPrecioResponse"
+            },
+            "type" : "array"
+          },
+          "descripcion" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "ean" : {
+            "type" : "string"
+          },
+          "encontrado" : {
+            "type" : "boolean"
+          },
+          "fechaDataset" : {
+            "format" : "date",
+            "nullable" : true,
+            "type" : "string"
+          },
+          "fuenteDatos" : {
+            "type" : "string"
+          },
+          "imagenUrl" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "marca" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "precioMaximo" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "precioMinimo" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "precioPromedio" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "sinPrecios" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "cantidadOfertas", "comercios", "descripcion", "ean", "encontrado", "fechaDataset", "fuenteDatos", "imagenUrl", "marca", "precioMaximo", "precioMinimo", "precioPromedio", "sinPrecios" ],
+        "type" : "object"
+      },
+      "SepaProductoResponse" : {
+        "properties" : {
+          "cantidadOfertas" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "descripcion" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "ean" : {
+            "type" : "string"
+          },
+          "fechaDataset" : {
+            "format" : "date",
+            "nullable" : true,
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "imagenUrl" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "marca" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "precioMaximo" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "precioMinimo" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "precioPromedio" : {
+            "nullable" : true,
+            "type" : "number"
+          }
+        },
+        "required" : [ "cantidadOfertas", "descripcion", "ean", "fechaDataset", "id", "imagenUrl", "marca", "precioMaximo", "precioMinimo", "precioPromedio" ],
+        "type" : "object"
+      },
+      "SepaSucursalesCercanasResponse" : {
+        "properties" : {
+          "ean" : {
+            "type" : "string"
+          },
+          "fechaDataset" : {
+            "format" : "date",
+            "nullable" : true,
+            "type" : "string"
+          },
+          "radioKm" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "sucursales" : {
+            "items" : {
+              "$ref" : "#/components/schemas/SucursalPrecioResponse"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [ "ean", "fechaDataset", "radioKm", "sucursales" ],
+        "type" : "object"
+      },
+      "SepaSyncEstadoResponse" : {
+        "properties" : {
+          "dia" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "duracionSegundos" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "error" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "estado" : {
+            "enum" : [ "IDLE", "EN_CURSO", "OK", "ERROR" ],
+            "type" : "string"
+          },
+          "fechaDataset" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "filasProcesadas" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "fin" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "inicio" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "productosGuardados" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "productosInsertados" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "dia", "duracionSegundos", "error", "estado", "fechaDataset", "filasProcesadas", "fin", "inicio", "productosGuardados", "productosInsertados" ],
+        "type" : "object"
+      },
+      "SortObject" : {
+        "properties" : {
+          "empty" : {
+            "type" : "boolean"
+          },
+          "sorted" : {
+            "type" : "boolean"
+          },
+          "unsorted" : {
+            "type" : "boolean"
+          }
+        },
+        "type" : "object"
+      },
+      "StoreSavings" : {
+        "properties" : {
+          "storeName" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "ticketCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "totalDiscounts" : {
+            "type" : "number"
+          }
+        },
+        "required" : [ "storeName", "ticketCount", "totalDiscounts" ],
+        "type" : "object"
+      },
+      "SucursalPrecioResponse" : {
+        "properties" : {
+          "bandera" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "banderaId" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "comercioId" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "direccion" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "distanciaKm" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "latitud" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "localidad" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "longitud" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "nombre" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "precio" : {
+            "type" : "number"
+          },
+          "provincia" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "sucursalId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "tipo" : {
+            "nullable" : true,
+            "type" : "string"
+          }
+        },
+        "required" : [ "bandera", "banderaId", "comercioId", "direccion", "distanciaKm", "latitud", "localidad", "longitud", "nombre", "precio", "provincia", "sucursalId", "tipo" ],
+        "type" : "object"
+      },
+      "Summary" : {
+        "properties" : {
+          "averageSavings" : {
+            "type" : "number"
+          },
+          "ticketCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "totalSavings" : {
+            "type" : "number"
+          },
+          "totalSpent" : {
+            "type" : "number"
+          }
+        },
+        "required" : [ "averageSavings", "ticketCount", "totalSavings", "totalSpent" ],
+        "type" : "object"
+      },
+      "TicketItemResponse" : {
+        "properties" : {
+          "barcode" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "category" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "discountAmount" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "discountDescription" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "originalPrice" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "quantity" : {
+            "type" : "number"
+          },
+          "rawDescription" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "subtotal" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "unitPrice" : {
+            "type" : "number"
+          }
+        },
+        "required" : [ "barcode", "category", "description", "discountAmount", "discountDescription", "id", "originalPrice", "quantity", "rawDescription", "subtotal", "unitPrice" ],
+        "type" : "object"
+      },
+      "TicketItemUpdate" : {
+        "properties" : {
+          "description" : {
+            "type" : "string"
+          },
+          "discountAmount" : {
+            "type" : "number"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "originalPrice" : {
+            "type" : "number"
+          },
+          "quantity" : {
+            "type" : "number"
+          },
+          "unitPrice" : {
+            "type" : "number"
+          }
+        },
+        "type" : "object"
+      },
+      "TicketResponse" : {
+        "properties" : {
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TicketItemResponse"
+            },
+            "type" : "array"
+          },
+          "reviewed" : {
+            "type" : "boolean"
+          },
+          "status" : {
+            "enum" : [ "PENDING", "PROCESSED", "FAILED" ],
+            "type" : "string"
+          },
+          "storeName" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "subtotal" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "ticketId" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "total" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "totalDiscounts" : {
+            "nullable" : true,
+            "type" : "number"
+          }
+        },
+        "required" : [ "createdAt", "id", "items", "reviewed", "status", "storeName", "subtotal", "ticketId", "total", "totalDiscounts" ],
+        "type" : "object"
+      },
+      "TimelineSavings" : {
+        "properties" : {
+          "period" : {
+            "type" : "string"
+          },
+          "ticketCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "totalDiscounts" : {
+            "type" : "number"
+          }
+        },
+        "required" : [ "period", "ticketCount", "totalDiscounts" ],
+        "type" : "object"
+      },
+      "UpdateFavoriteStoresRequest" : {
+        "properties" : {
+          "chainSlugs" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "radiusKm" : {
+            "format" : "int32",
+            "maximum" : 20,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "UpdateProfileRequest" : {
+        "properties" : {
+          "address" : {
+            "maxLength" : 300,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "alternativeBrandsEnabled" : {
+            "type" : "boolean"
+          },
+          "currentPassword" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "email" : {
+            "maxLength" : 150,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "name" : {
+            "maxLength" : 100,
+            "minLength" : 2,
+            "type" : "string"
+          },
+          "offersPushEnabled" : {
+            "type" : "boolean"
+          },
+          "profilePicture" : {
+            "maxLength" : 2097152,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "UpdateTicketRequest" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TicketItemUpdate"
+            },
+            "type" : "array"
+          },
+          "storeName" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "UserProfileResponse" : {
+        "properties" : {
+          "address" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "alternativeBrandsEnabled" : {
+            "type" : "boolean"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "offersPushEnabled" : {
+            "type" : "boolean"
+          },
+          "points" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "profilePicture" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "referralCode" : {
+            "nullable" : true,
+            "type" : "string"
+          }
+        },
+        "required" : [ "address", "alternativeBrandsEnabled", "createdAt", "email", "id", "name", "offersPushEnabled", "points", "profilePicture", "referralCode" ],
+        "type" : "object"
+      },
+      "VerifyResetCodeRequest" : {
+        "properties" : {
+          "code" : {
+            "minLength" : 1,
+            "pattern" : "\\d{6}",
+            "type" : "string"
+          },
+          "email" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      }
+    }
+  },
+  "info" : {
+    "title" : "OpenAPI definition",
+    "version" : "v0"
+  },
+  "openapi" : "3.0.1",
+  "paths" : {
+    "/auth/forgot-password" : {
+      "post" : {
+        "operationId" : "forgotPassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ForgotPasswordRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/auth/login" : {
+      "post" : {
+        "operationId" : "login",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/auth/register" : {
+      "post" : {
+        "operationId" : "register_1",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/auth/reset-password" : {
+      "post" : {
+        "operationId" : "resetPassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ResetPasswordRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/auth/verify-reset-code" : {
+      "post" : {
+        "operationId" : "verifyResetCode",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/VerifyResetCodeRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/offers" : {
+      "get" : {
+        "operationId" : "listOffers",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 1,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "pageSize",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "province",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "chains",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "categories",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OfferFeedResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "offer-controller" ]
+      }
+    },
+    "/points/history" : {
+      "get" : {
+        "operationId" : "getHistory",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/PointsHistoryEntryResponse"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "points-controller" ]
+      }
+    },
+    "/points/me" : {
+      "get" : {
+        "operationId" : "getBalance",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PointsBalanceResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "points-controller" ]
+      }
+    },
+    "/points/redeem" : {
+      "post" : {
+        "operationId" : "redeem",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RedeemRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PointsBalanceResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "points-controller" ]
+      }
+    },
+    "/products/recurring" : {
+      "get" : {
+        "operationId" : "getRecurringProducts",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "ticketId",
+          "required" : false,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/RecurringProductResponse"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "product-controller" ]
+      }
+    },
+    "/push/register" : {
+      "post" : {
+        "operationId" : "register",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RegisterPushTokenRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "push-controller" ]
+      }
+    },
+    "/savings/report" : {
+      "get" : {
+        "operationId" : "getReport",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "from",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "to",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SavingsReportResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "savings-controller" ]
+      }
+    },
+    "/sepa/precios" : {
+      "get" : {
+        "description" : "Resuelve el recurso más reciente vía API CKAN (o el día indicado), lo cachea en disco y devuelve los precios normalizados, filtrados y paginados. La primera llamada del día puede tardar varios minutos.",
+        "operationId" : "getPrecios",
+        "parameters" : [ {
+          "description" : "Día del recurso (lunes..viernes). Si se omite, usa el más reciente",
+          "in" : "query",
+          "name" : "dia",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Filtro por comercio: razón social, bandera, CUIT o id_comercio",
+          "in" : "query",
+          "name" : "comercio",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Filtro por descripción o marca del producto (contiene, sin acentos)",
+          "in" : "query",
+          "name" : "producto",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Filtro por código EAN exacto",
+          "in" : "query",
+          "name" : "ean",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 50,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SepaPreciosPageResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Consulta EN VIVO contra el dataset SEPA (lento: descarga y parsea el zip; solo ADMIN)",
+        "tags" : [ "SEPA" ]
+      }
+    },
+    "/sepa/productos" : {
+      "get" : {
+        "description" : "Busca en la tabla sepa_producto cargada por la sincronización semanal. Precio mínimo/promedio/máximo entre todos los comercios y sucursales. Ordenado por cantidad de ofertas. Incluye imagenUrl si ya fue resuelta; si viene null, el EAN queda encolado para resolverse en background.",
+        "operationId" : "getProductos",
+        "parameters" : [ {
+          "description" : "Búsqueda por palabras de la descripción o marca",
+          "in" : "query",
+          "name" : "q",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Código EAN exacto",
+          "in" : "query",
+          "name" : "ean",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "default" : 50,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageSepaProductoResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Consulta el snapshot en DB (rápido; agregado por EAN)",
+        "tags" : [ "SEPA" ]
+      }
+    },
+    "/sepa/productos/{ean}" : {
+      "get" : {
+        "description" : "Devuelve el agregado de precios, el desglose por comercio (del más barato al más caro) y la imagen. Responde 200 siempre: si el EAN no está en el snapshot, viene encontrado=false y se intenta completar nombre e imagen desde los proveedores externos, con un tope de tiempo corto.",
+        "operationId" : "getProductoPorEan",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "ean",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SepaProductoDetalleResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Detalle de un producto por EAN, pensado para el escaneo de código de barras",
+        "tags" : [ "SEPA" ]
+      }
+    },
+    "/sepa/productos/{ean}/sucursales" : {
+      "get" : {
+        "description" : "De cada cadena, la sucursal más barata dentro del radio (por defecto 5 km, máximo 30), con su dirección y coordenadas para navegar hasta ella. Los precios son por sucursal, no el mínimo de la cadena en todo el país. Responde 200 con la lista vacía si no hay sucursales con precio en el radio.",
+        "operationId" : "getSucursalesCercanas",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "ean",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Latitud del punto de búsqueda",
+          "in" : "query",
+          "name" : "lat",
+          "required" : true,
+          "schema" : {
+            "format" : "double",
+            "type" : "number"
+          }
+        }, {
+          "description" : "Longitud del punto de búsqueda",
+          "in" : "query",
+          "name" : "lng",
+          "required" : true,
+          "schema" : {
+            "format" : "double",
+            "type" : "number"
+          }
+        }, {
+          "description" : "Radio en km (1 a 30)",
+          "in" : "query",
+          "name" : "radiusKm",
+          "required" : false,
+          "schema" : {
+            "default" : 5.0,
+            "format" : "double",
+            "type" : "number"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SepaSucursalesCercanasResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Dónde está más barato un producto cerca de una ubicación",
+        "tags" : [ "SEPA" ]
+      }
+    },
+    "/sepa/sync" : {
+      "post" : {
+        "description" : "Responde 202 al instante y sigue en background. Seguir el progreso con GET /sepa/sync/estado.",
+        "operationId" : "sync",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "dia",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SepaSyncEstadoResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Dispara la sincronización del snapshot en DB (requiere rol ADMIN)",
+        "tags" : [ "SEPA" ]
+      }
+    },
+    "/sepa/sync/estado" : {
+      "get" : {
+        "operationId" : "syncEstado",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SepaSyncEstadoResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Estado de la sincronización en curso o de la última ejecutada (solo ADMIN)",
+        "tags" : [ "SEPA" ]
+      }
+    },
+    "/stores/chains" : {
+      "get" : {
+        "operationId" : "getChains",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "additionalProperties" : {
+                      "type" : "object"
+                    },
+                    "type" : "object"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "store-controller" ]
+      }
+    },
+    "/stores/favorites" : {
+      "get" : {
+        "operationId" : "getFavorites",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FavoriteStoresResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "store-controller" ]
+      },
+      "put" : {
+        "operationId" : "updateFavorites",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateFavoriteStoresRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FavoriteStoresResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "store-controller" ]
+      }
+    },
+    "/stores/nearby" : {
+      "get" : {
+        "operationId" : "getNearby",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "lat",
+          "required" : true,
+          "schema" : {
+            "format" : "double",
+            "type" : "number"
+          }
+        }, {
+          "in" : "query",
+          "name" : "lng",
+          "required" : true,
+          "schema" : {
+            "format" : "double",
+            "type" : "number"
+          }
+        }, {
+          "in" : "query",
+          "name" : "radiusKm",
+          "required" : false,
+          "schema" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "onlyFavorites",
+          "required" : false,
+          "schema" : {
+            "type" : "boolean"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "additionalProperties" : {
+                      "type" : "object"
+                    },
+                    "type" : "object"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "store-controller" ]
+      }
+    },
+    "/tickets" : {
+      "get" : {
+        "operationId" : "getMyTickets",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/TicketResponse"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "ticket-controller" ]
+      }
+    },
+    "/tickets/scan" : {
+      "post" : {
+        "operationId" : "scan",
+        "requestBody" : {
+          "content" : {
+            "multipart/form-data" : {
+              "schema" : {
+                "properties" : {
+                  "file" : {
+                    "items" : {
+                      "format" : "binary",
+                      "type" : "string"
+                    },
+                    "type" : "array"
+                  }
+                },
+                "required" : [ "file" ],
+                "type" : "object"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "ticket-controller" ]
+      }
+    },
+    "/tickets/{id}" : {
+      "delete" : {
+        "operationId" : "delete",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "ticket-controller" ]
+      },
+      "get" : {
+        "operationId" : "getTicket",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "ticket-controller" ]
+      },
+      "put" : {
+        "operationId" : "update",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateTicketRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "ticket-controller" ]
+      }
+    },
+    "/users/me" : {
+      "get" : {
+        "operationId" : "getProfile",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserProfileResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "user-controller" ]
+      }
+    },
+    "/users/password" : {
+      "put" : {
+        "operationId" : "changePassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "user-controller" ]
+      }
+    },
+    "/users/profile" : {
+      "put" : {
+        "operationId" : "updateProfile",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateProfileRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "user-controller" ]
+      }
+    }
+  },
+  "tags" : [ {
+    "description" : "Precios minoristas SEPA (datos.produccion.gob.ar)",
+    "name" : "SEPA"
+  } ]
+}

@@ -1,30 +1,31 @@
 package ar.edu.ofertAR.dto.response;
 
+import org.springframework.lang.Nullable;
 import lombok.Builder;
 
 import java.math.BigDecimal;
 
 @Builder
 public record SepaPrecioResponse(
-        String comercioId,
-        String comercioCuit,
-        String comercioRazonSocial,
-        String bandera,
-        String banderaId,
-        String sucursalId,
-        String productoId,
+        @Nullable String comercioId,
+        @Nullable String comercioCuit,
+        @Nullable String comercioRazonSocial,
+        @Nullable String bandera,
+        @Nullable String banderaId,
+        @Nullable String sucursalId,
+        @Nullable String productoId,
         String ean,
-        String descripcion,
-        String marca,
-        String cantidadPresentacion,
-        String unidadMedidaPresentacion,
-        BigDecimal precioLista,
-        BigDecimal precioReferencia,
-        String unidadMedidaReferencia,
-        BigDecimal precioPromo1,
-        String leyendaPromo1,
-        BigDecimal precioPromo2,
-        String leyendaPromo2
+        @Nullable String descripcion,
+        @Nullable String marca,
+        @Nullable String cantidadPresentacion,
+        @Nullable String unidadMedidaPresentacion,
+        @Nullable BigDecimal precioLista,
+        @Nullable BigDecimal precioReferencia,
+        @Nullable String unidadMedidaReferencia,
+        @Nullable BigDecimal precioPromo1,
+        @Nullable String leyendaPromo1,
+        @Nullable BigDecimal precioPromo2,
+        @Nullable String leyendaPromo2
 ) {
     /** Copia con la bandera reemplazada (para nombres de cadena curados). */
     public SepaPrecioResponse withBandera(String bandera) {

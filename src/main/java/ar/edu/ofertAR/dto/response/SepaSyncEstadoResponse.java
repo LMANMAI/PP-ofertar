@@ -1,20 +1,21 @@
 package ar.edu.ofertAR.dto.response;
 
+import org.springframework.lang.Nullable;
 import lombok.Builder;
 
 /** Estado del sync en background, consultable mientras corre. */
 @Builder
 public record SepaSyncEstadoResponse(
         Estado estado,
-        String dia,
-        String fechaDataset,
-        String inicio,
-        String fin,
+        @Nullable String dia,
+        @Nullable String fechaDataset,
+        @Nullable String inicio,
+        @Nullable String fin,
         long filasProcesadas,
         long productosGuardados,
         long productosInsertados,
         long duracionSegundos,
-        String error
+        @Nullable String error
 ) {
     public enum Estado {
         /** Nunca se corrió en esta instancia. */

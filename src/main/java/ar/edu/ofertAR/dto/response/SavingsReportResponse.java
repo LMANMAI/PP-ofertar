@@ -1,5 +1,6 @@
 package ar.edu.ofertAR.dto.response;
 
+import org.springframework.lang.Nullable;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -36,6 +37,7 @@ public class SavingsReportResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class CategorySavings {
+        @Nullable
         private String category;
         private BigDecimal totalDiscounts;
         private long itemCount;
@@ -46,6 +48,7 @@ public class SavingsReportResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class StoreSavings {
+        @Nullable
         private String storeName;
         private BigDecimal totalDiscounts;
         private long ticketCount;
@@ -67,7 +70,9 @@ public class SavingsReportResponse {
     @AllArgsConstructor
     public static class ProductSavings {
         private String description;
+        @Nullable
         private String barcode;
+        @Nullable
         private String category;
         private long purchaseCount;
         private BigDecimal totalDiscounts;
