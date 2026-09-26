@@ -22,12 +22,12 @@ Backend de OfertAR, encargado del procesamiento de tickets (OCR + IA), comparaci
 
 | Capa | Tecnología |
 |---|---|
-| Lenguaje | Java 17 |
+| Lenguaje | Java 21 |
 | Framework | Spring Boot 3.5.0 |
 | Persistencia | Spring Data JPA + Hibernate |
 | Base de datos | MySQL |
 | Seguridad | Spring Security |
-| Build tool | Maven (via Maven Wrapper) |
+| Build tool | Gradle (via Gradle Wrapper) |
 | Utilidades | Lombok, Spring Validation |
 | Tests | JUnit 5 + Spring Security Test |
 
@@ -52,16 +52,16 @@ PP-ofertar/
 │   │       └── application.properties      # Config de entorno
 │   └── test/
 ├── pom.xml
-└── mvnw / mvnw.cmd                         # Maven Wrapper (no requiere instalación)
+└── gradlew / gradlew.bat                   # Gradle Wrapper (no requiere instalación)
 ```
 
 ---
 
 ## Requisitos previos
 
-- Java 17+
+- Java 21
 - MySQL 8+
-- No se requiere Maven instalado (se usa el wrapper incluido `./mvnw`)
+- No se requiere Gradle instalado (se usa el wrapper incluido `./gradlew`)
 
 ---
 
@@ -73,15 +73,19 @@ Crear la base de datos en MySQL:
 CREATE DATABASE ofertar_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Editar `src/main/resources/application.properties`:
+La configuración sale de variables de entorno (ver `.env.example`). Son obligatorias y no tienen valor por
+defecto, la app no arranca si falta alguna: `DB_PASSWORD`, `JWT_SECRET` (32+ caracteres) y `OCR_PASSWORD`.
+Además: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `CORS_ALLOWED_ORIGINS` (solo si hay cliente web).
 
-```properties
-spring.datasource.url=jdbc:mysql://localhost:3306/ofertar_db
-spring.datasource.username=tu_usuario
-spring.datasource.password=tu_password
-spring.jpa.hibernate.ddl-auto=update
-spring.jpa.show-sql=true
-```
+El esquema de la base lo gestiona **Flyway** (`src/main/resources/db/migration`); Hibernate solo valida
+(`ddl-auto=validate`). Todo cambio de entidad necesita una migración nueva `V<n>__descripcion.sql`.
+
+En desarrollo local activar el perfil `dev` (`SPRING_PROFILES_ACTIVE=dev`): muestra el SQL, habilita Swagger
+en `/docs` y escribe en el log el código de recuperación de contraseña. Sin perfil la app corre con la
+configuración segura de producción.
+
+Los endpoints `/sepa/precios` y `/sepa/sync` requieren un usuario con rol `ADMIN`
+(`UPDATE users SET role = 'ADMIN' WHERE email = '...'`).
 
 ---
 
@@ -92,15 +96,17 @@ spring.jpa.show-sql=true
 git clone https://github.com/LMANMAI/PP-ofertar.git
 cd PP-ofertar
 
-# Compilar y correr (Linux/Mac)
-./mvnw spring-boot:run
+# Variables de entorno (Linux/Mac; en PowerShell usar $env:NOMBRE = "valor")
+export DB_PASSWORD=... JWT_SECRET=... OCR_PASSWORD=... SPRING_PROFILES_ACTIVE=dev
 
-# Compilar y correr (Windows)
-mvnw.cmd spring-boot:run
+# Compilar y correr (Windows: gradlew.bat)
+./gradlew bootRun
 
-# Correr tests
-./mvnw test
+# Correr tests (necesitan un MySQL accesible con esas variables)
+./gradlew test
 ```
+
+Health check: `GET /actuator/health`.
 
 La API quedara disponible en `http://localhost:8080`
 
