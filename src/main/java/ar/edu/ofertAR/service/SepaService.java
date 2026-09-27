@@ -27,6 +27,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -34,9 +36,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -73,6 +78,16 @@ public class SepaService {
     /** Fecha del dataset (YYYY-MM-DD) cuando no se puede extraer del nombre. */
     @Value("${sepa.resource-fecha:}")
     private String resourceFechaOverride;
+
+    /**
+     * Carpeta de la que se toma el zip más reciente (opcional). La llena
+     * {@code tools/sepa-relay} desde una conexión argentina: el sitio oficial
+     * responde 403 a la IP del servidor, así que la descarga la hace otro
+     * equipo y la deja acá. A diferencia de {@code resource-file}, no hay que
+     * tocar ninguna variable cuando llega un dataset nuevo.
+     */
+    @Value("${sepa.resource-dir:}")
+    private String resourceDirOverride;
 
     private final SepaComercioNombres comercioNombres;
 
@@ -245,16 +260,32 @@ public class SepaService {
      * Devuelve vacío si no hay override configurado (se sigue usando CKAN).
      */
     private Optional<SepaResource> resolvedOverride() {
+        // Precedencia: archivo fijo > carpeta vigilada > espejo http. El
+        // archivo fijo gana porque es lo que alguien pone a mano para forzar
+        // un dataset puntual, aunque la carpeta tenga uno más nuevo.
         String fuente;
+        String fechaDelContenido = null;
         if (resourceFileOverride != null && !resourceFileOverride.isBlank()) {
-            fuente = Path.of(resourceFileOverride).toUri().toString();
+            Path archivo = Path.of(resourceFileOverride);
+            fuente = archivo.toUri().toString();
+            fechaDelContenido = fechaDelZip(archivo);
+        } else if (resourceDirOverride != null && !resourceDirOverride.isBlank()) {
+            ZipEnCarpeta masReciente = zipMasReciente(Path.of(resourceDirOverride));
+            fuente = masReciente.archivo().toUri().toString();
+            fechaDelContenido = masReciente.fecha();
         } else if (resourceUrlOverride != null && !resourceUrlOverride.isBlank()) {
             fuente = resourceUrlOverride;
         } else {
             return Optional.empty();
         }
 
+        // La fecha de adentro del zip le gana al nombre: "sepa_martes.zip", que
+        // es como lo publica el sitio, no trae fecha, y era lo que obligaba a
+        // cargar SEPA_RESOURCE_FECHA a mano con cada archivo nuevo.
         String fecha = resourceFechaOverride == null ? "" : resourceFechaOverride.trim();
+        if (fecha.isBlank() && fechaDelContenido != null) {
+            fecha = fechaDelContenido;
+        }
         if (fecha.isBlank()) {
             fecha = extractDate(fuente);
         }
@@ -265,6 +296,131 @@ public class SepaService {
 
         log.info("SEPA: recurso por override (fecha {}): {}", fecha, displayUrl(fuente));
         return Optional.of(new SepaResource(fecha, fecha, fuente));
+    }
+
+    /** Un zip SEPA de la carpeta vigilada, con la fecha leída de su contenido. */
+    record ZipEnCarpeta(Path archivo, String fecha) {}
+
+    /** "2026-09-15/...": la carpeta con la que SEPA arma el zip del día. */
+    private static final Pattern CARPETA_CON_FECHA = Pattern.compile("^(\\d{4}-\\d{2}-\\d{2})/");
+
+    /** "sepa_1_comercio-sepa-12_2026-09-15_09-05-10.zip": la fecha de cada zip interno. */
+    private static final Pattern FECHA_ZIP_INTERNO = Pattern.compile("_(\\d{4}-\\d{2}-\\d{2})_");
+
+    /**
+     * La fecha del dataset según el propio zip, o null si no es un zip SEPA o
+     * no la dice sin ambigüedad.
+     *
+     * <p>Sólo lee el índice del zip, no descomprime nada: se llama sobre cada
+     * archivo de la carpeta vigilada en cada pasada del cron. Manda la carpeta
+     * {@code YYYY-MM-DD/} con la que SEPA arma el zip. Si no la hay, vale la
+     * fecha de los zips internos, siempre que sea una sola: los internos llevan
+     * además la hora en que se generaron, y uno generado pasada la medianoche
+     * podría traer el día siguiente. Un zip sin zips internos no es un dataset
+     * SEPA aunque tenga una fecha en algún nombre.
+     */
+    static String fechaDelZip(Path zip) {
+        if (zip == null || !Files.isRegularFile(zip)) {
+            return null;
+        }
+        Set<String> carpetas = new TreeSet<>();
+        Set<String> internos = new TreeSet<>();
+        int zipsInternos = 0;
+        try (ZipFile zf = new ZipFile(zip.toFile())) {
+            Enumeration<? extends ZipEntry> entradas = zf.entries();
+            while (entradas.hasMoreElements()) {
+                String nombre = entradas.nextElement().getName();
+                Matcher carpeta = CARPETA_CON_FECHA.matcher(nombre);
+                if (carpeta.find()) {
+                    carpetas.add(carpeta.group(1));
+                }
+                if (nombre.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+                    zipsInternos++;
+                    Matcher interno = FECHA_ZIP_INTERNO.matcher(nombre.substring(nombre.lastIndexOf('/') + 1));
+                    if (interno.find()) {
+                        internos.add(interno.group(1));
+                    }
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            // Truncado, a medio copiar o directamente no es un zip.
+            return null;
+        }
+        if (zipsInternos == 0) {
+            return null;
+        }
+        String fecha = carpetas.size() == 1 ? carpetas.iterator().next()
+                : carpetas.isEmpty() && internos.size() == 1 ? internos.iterator().next()
+                : null;
+        return fechaValida(fecha) ? fecha : null;
+    }
+
+    private static boolean fechaValida(String fecha) {
+        if (fecha == null) {
+            return false;
+        }
+        try {
+            LocalDate.parse(fecha);
+            return true;
+        } catch (DateTimeParseException e) {
+            return false;
+        }
+    }
+
+    /**
+     * El zip SEPA más reciente de la carpeta, por la fecha de su contenido y no
+     * por la del archivo: una copia vieja subida hoy sigue siendo un dataset
+     * viejo. A igual fecha, el modificado último. Se ignoran los que no
+     * terminan en .zip —el relay sube a un ".part" y renombra al terminar, así
+     * que un archivo a medio subir nunca se lee— y los que no son un dataset
+     * SEPA legible.
+     */
+    static ZipEnCarpeta zipMasReciente(Path carpeta) {
+        if (carpeta == null || !Files.isDirectory(carpeta)) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "SEPA_RESOURCE_DIR no es una carpeta accesible desde el servidor");
+        }
+        List<Path> candidatos;
+        try (Stream<Path> archivos = Files.list(carpeta)) {
+            candidatos = archivos
+                    .filter(Files::isRegularFile)
+                    .filter(p -> {
+                        String nombre = p.getFileName().toString();
+                        return !nombre.startsWith(".") && nombre.toLowerCase(Locale.ROOT).endsWith(".zip");
+                    })
+                    .toList();
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "No se pudo leer SEPA_RESOURCE_DIR: " + e.getMessage(), e);
+        }
+        ZipEnCarpeta mejor = null;
+        long mejorModificado = Long.MIN_VALUE;
+        for (Path zip : candidatos) {
+            String fecha = fechaDelZip(zip);
+            if (fecha == null) {
+                log.warn("SEPA: se ignora {} en SEPA_RESOURCE_DIR: no es un dataset SEPA legible", zip.getFileName());
+                continue;
+            }
+            long modificado = ultimaModificacion(zip);
+            int cmp = mejor == null ? 1 : fecha.compareTo(mejor.fecha());
+            if (cmp > 0 || (cmp == 0 && modificado > mejorModificado)) {
+                mejor = new ZipEnCarpeta(zip, fecha);
+                mejorModificado = modificado;
+            }
+        }
+        if (mejor == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "No hay ningún zip SEPA válido en SEPA_RESOURCE_DIR (¿corrió el relay?)");
+        }
+        return mejor;
+    }
+
+    private static long ultimaModificacion(Path archivo) {
+        try {
+            return Files.getLastModifiedTime(archivo).toMillis();
+        } catch (IOException e) {
+            return Long.MIN_VALUE;
+        }
     }
 
     /** No exponer rutas internas del servidor en respuestas/logs amigables. */

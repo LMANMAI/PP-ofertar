@@ -59,3 +59,6 @@ AGENTS.md
 GEMINI.md
 opencode.jsonc
 doc/
+
+# Configuracion local del relay SEPA (host del VPS, ruta de la clave)
+tools/sepa-relay/sepa-relay.config.psd1
