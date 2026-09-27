@@ -9,6 +9,7 @@ import java.math.BigDecimal;
  * @param bandera nombre comercial de esa sucursal ("Jumbo"), que puede diferir del
  *                del comercio: Cencosud agrupa Jumbo, Disco y Vea
  * @param precio  precio de lista de esa sucursal, no el mínimo de la cadena
+ * @param horarios horario de atención de esa sucursal; null si SEPA no lo informa
  */
 public record SucursalPrecioResponse(
         String comercioId,
@@ -23,6 +24,7 @@ public record SucursalPrecioResponse(
         double latitud,
         double longitud,
         double distanciaKm,
-        BigDecimal precio
+        BigDecimal precio,
+        HorariosResponse horarios
 ) {
 }

@@ -73,4 +73,13 @@ public class SepaSucursal {
 
     @Column(nullable = false)
     private double longitud;
+
+    /**
+     * Horario de atención como JSON, en el mismo formato que recibe la app (ver
+     * {@link ar.edu.ofertAR.dto.response.HorariosResponse}); null si SEPA no lo informa.
+     * Nullable a propósito: ddl-auto la agrega sin tocar las filas existentes, que la
+     * completan con la siguiente sincronización.
+     */
+    @Column(columnDefinition = "TEXT")
+    private String horarios;
 }

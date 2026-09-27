@@ -12,9 +12,9 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.MediaType;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 
@@ -35,7 +35,13 @@ class PushNotificationServiceTest {
     @Mock private PushTokenRepository pushTokenRepository;
     @Mock private UserRepository userRepository;
     @Mock private TicketRepository ticketRepository;
-    @Mock(answer = Answers.RETURNS_DEEP_STUBS) private RestClient restClient;
+    /** Plano, y la cadena fluida armada a mano en {@link #stubExpoResponse}.
+     *  Con RETURNS_DEEP_STUBS los tres tests de envio pasaban a mentir: ver el
+     *  comentario del helper. */
+    @Mock private RestClient restClient;
+    @Mock private RestClient.RequestBodyUriSpec restClientUriSpec;
+    @Mock private RestClient.RequestBodySpec restClientBodySpec;
+    @Mock private RestClient.ResponseSpec restClientResponseSpec;
     @Mock private TransactionTemplate transactionTemplate;
 
     /** Runs submitted tasks synchronously, so tests don't need to wait on a
@@ -58,6 +64,45 @@ class PushNotificationServiceTest {
             invocation.getArgument(0, Consumer.class).accept(null);
             return null;
         }).when(transactionTemplate).executeWithoutResult(any());
+    }
+
+    /** El mismo endpoint que PushNotificationService.EXPO_PUSH_URL, que es
+     *  privado. Se stubea el string exacto y no anyString() para clavarlo: si
+     *  alguien apunta el servicio a otro host, la cadena deja de matchear y
+     *  estos tests se caen en vez de seguir en verde contra un destino que no
+     *  es Expo. */
+    private static final String EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+
+    /**
+     * Arma la cadena fluida del RestClient paso a paso y hace que Expo
+     * conteste {@code expoResponse}.
+     *
+     * <p>Antes era una sola expresion con deep stubs:
+     * {@code restClient.post().uri(any(String.class)).contentType(any()).body(any()).retrieve().body(Map.class)}.
+     * Compila, stubea sin chistar y no matchea nunca. Los deep stubs indexan
+     * cada mock hijo por la invocacion que lo produjo, y un matcher evalua a
+     * null al momento de stubear: el stub quedaba registrado contra
+     * {@code contentType(null)} mientras el servicio llama
+     * {@code contentType(APPLICATION_JSON)}, que devuelve otro hijo sin nada
+     * encima. Medido, cada paso devolvia otra instancia:
+     *
+     * <pre>
+     *   afterUri  = RequestBodySpec@1167916234
+     *   afterCt   = RequestBodySpec@238169801
+     *   afterBody = RequestBodySpec@1006398046
+     *   result    = null
+     * </pre>
+     *
+     * <p>Con la respuesta en null, handleTickets corta en su primer if y nunca
+     * borra el token muerto: dos tests rojos sobre codigo sano.
+     */
+    private void stubExpoResponse(Map<String, Object> expoResponse) {
+        when(restClient.post()).thenReturn(restClientUriSpec);
+        when(restClientUriSpec.uri(EXPO_PUSH_URL)).thenReturn(restClientBodySpec);
+        when(restClientBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(restClientBodySpec);
+        when(restClientBodySpec.body(any(Object.class))).thenReturn(restClientBodySpec);
+        when(restClientBodySpec.retrieve()).thenReturn(restClientResponseSpec);
+        when(restClientResponseSpec.body(Map.class)).thenReturn(expoResponse);
     }
 
     private static User user(Long id) {
@@ -122,16 +167,13 @@ class PushNotificationServiceTest {
             User u = user(1L);
             PushToken token = PushToken.builder().user(u).token("DEAD_TOKEN").platform("android").build();
             when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of(token));
-
-            Map<String, Object> expoResponse = Map.of(
+            stubExpoResponse(Map.of(
                     "data", List.of(Map.of(
                             "status", "error",
                             "message", "not registered",
                             "details", Map.of("error", "DeviceNotRegistered")
                     ))
-            );
-            when(restClient.post().uri(any(String.class)).contentType(any()).body(any())
-                    .retrieve().body(Map.class)).thenReturn(expoResponse);
+            ));
 
             service.sendToUser(u, "Titulo", "Cuerpo", Map.of());
 
@@ -144,16 +186,48 @@ class PushNotificationServiceTest {
             User u = user(1L);
             PushToken token = PushToken.builder().user(u).token("GOOD_TOKEN").platform("android").build();
             when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of(token));
-
-            Map<String, Object> expoResponse = Map.of(
+            stubExpoResponse(Map.of(
                     "data", List.of(Map.of("status", "ok", "id", "receipt-1"))
-            );
-            when(restClient.post().uri(any(String.class)).contentType(any()).body(any())
-                    .retrieve().body(Map.class)).thenReturn(expoResponse);
+            ));
 
             service.sendToUser(u, "Titulo", "Cuerpo", Map.of());
 
             verify(pushTokenRepository, never()).deleteByToken(any());
+        }
+
+        @Test
+        @DisplayName("lo que se postea a Expo lleva los tokens, el titulo y el cuerpo")
+        void postsExpectedPayload() {
+            // El que hace ruido si la cadena del RestClient se vuelve a desarmar.
+            // Los otros dos miran el efecto -que un token se borre o no-, y ese
+            // efecto es ambiguo: con la cadena rota la respuesta es null,
+            // handleTickets corta en el primer if y "no borro nada" se lee igual
+            // que "Expo contesto ok". Aca se afirma que la llamada ocurrio, con
+            // que cuerpo, y de paso queda documentado el payload de Expo.
+            User u = user(1L);
+            PushToken a = PushToken.builder().user(u).token("TOKEN_A").platform("android").build();
+            PushToken b = PushToken.builder().user(u).token("TOKEN_B").platform("ios").build();
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of(a, b));
+            stubExpoResponse(Map.of("data", List.of(
+                    Map.of("status", "ok", "id", "r-1"),
+                    Map.of("status", "ok", "id", "r-2"))));
+
+            service.sendToUser(u, "Titulo", "Cuerpo", Map.of("screen", "offers"));
+
+            ArgumentCaptor<Object> sent = ArgumentCaptor.forClass(Object.class);
+            verify(restClientBodySpec).body(sent.capture());
+
+            assertInstanceOf(List.class, sent.getValue());
+            List<?> messages = (List<?>) sent.getValue();
+            assertEquals(1, messages.size(), "Expo recibe un solo mensaje con todos los destinatarios");
+            assertInstanceOf(Map.class, messages.get(0));
+            Map<?, ?> message = (Map<?, ?>) messages.get(0);
+
+            // El orden importa: handleTickets casa el ticket i con el token i.
+            assertEquals(List.of("TOKEN_A", "TOKEN_B"), message.get("to"));
+            assertEquals("Titulo", message.get("title"));
+            assertEquals("Cuerpo", message.get("body"));
+            assertEquals(Map.of("screen", "offers"), message.get("data"));
         }
     }
 

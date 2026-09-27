@@ -2,6 +2,8 @@ package ar.edu.ofertAR.service;
 
 import ar.edu.ofertAR.dto.response.SepaPrecioResponse;
 import ar.edu.ofertAR.dto.response.SepaPreciosPageResponse;
+import ar.edu.ofertAR.service.horario.HorarioParser;
+import ar.edu.ofertAR.service.horario.HorariosPlaceholder;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -558,9 +560,12 @@ public class SepaService {
     }
 
     /**
-     * Sucursales de un comercio con su dirección y coordenadas. Descarta las que no
-     * traen coordenadas válidas dentro de Argentina: sin ubicación no se pueden
+     * Sucursales de un comercio con su dirección, coordenadas y horario. Descarta las
+     * que no traen coordenadas válidas dentro de Argentina: sin ubicación no se pueden
      * ofrecer como "cerca", y el dataset trae filas con las columnas corridas.
+     *
+     * <p>El horario se juzga por comercio y no por fila: si TODAS declaran 24 horas
+     * todos los días es relleno y se descarta (ver {@link HorariosPlaceholder}).
      */
     private List<SepaSucursalData> readSucursales(ZipFile zipFile, String comercioId,
                                                   Map<String, String> banderas) throws IOException {
@@ -602,10 +607,25 @@ public class SepaService {
                         get(f, cols, "sucursales_localidad"),
                         get(f, cols, "sucursales_provincia"),
                         lat,
-                        lng));
+                        lng,
+                        HorarioParser.parsearSemana(horarioCeldas(f, cols))));
             }
         }
+        if (HorariosPlaceholder.esRelleno24h(out.stream().map(SepaSucursalData::horarios).toList())) {
+            log.info("SEPA: el comercio {} declara 00:00 a 24:00 en sus {} sucursales todos los días; "
+                    + "se toma como horario no informado", comercioId, out.size());
+            out.replaceAll(s -> s.conHorarios(null));
+        }
         return out;
+    }
+
+    /** Las siete columnas sucursales_<día>_horario_atencion, de lunes a domingo. */
+    private List<String> horarioCeldas(String[] fields, Map<String, Integer> cols) {
+        List<String> celdas = new ArrayList<>(HorarioParser.DIAS.size());
+        for (String dia : HorarioParser.DIAS) {
+            celdas.add(get(fields, cols, "sucursales_" + dia + "_horario_atencion"));
+        }
+        return celdas;
     }
 
     private static Double coordenada(String value, double min, double max) {

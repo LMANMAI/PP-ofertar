@@ -2,6 +2,7 @@ package ar.edu.ofertAR.service;
 
 import ar.edu.ofertAR.dto.response.SepaSyncEstadoResponse;
 import ar.edu.ofertAR.dto.response.SepaSyncResponse;
+import ar.edu.ofertAR.service.horario.HorariosJson;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -66,7 +67,7 @@ public class SepaSnapshotService {
 
     private static final String INSERT_SUCURSAL = "INSERT INTO " + TABLA_SUC_STAGING
             + " (id, comercio_id, bandera_id, sucursal_id, bandera, nombre, tipo, direccion, "
-            + "localidad, provincia, latitud, longitud) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "localidad, provincia, latitud, longitud, horarios) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String INSERT_GRUPO = "INSERT INTO " + TABLA_GRUPO_STAGING
             + " (ean, comercio_id, precio, cantidad_sucursales, sucursales) VALUES (?, ?, ?, ?, ?)";
@@ -310,7 +311,8 @@ public class SepaSnapshotService {
                         truncate(s.localidad(), 120),
                         truncate(s.provincia(), 20),
                         s.latitud(),
-                        s.longitud()
+                        s.longitud(),
+                        HorariosJson.escribir(s.horarios())
                 });
                 if (batch.size() == batchSize) {
                     insertarLote(INSERT_SUCURSAL, batch, sucursalesInsertadas);
