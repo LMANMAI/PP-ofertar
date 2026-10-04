@@ -93,7 +93,7 @@ public class PointsService {
 
         User referrer = userRepository.findByReferralCode(referralCodeUsed.trim()).orElse(null);
         if (referrer == null || referrer.getId().equals(newUser.getId())) {
-            log.info("Codigo de invitacion invalido o propio ignorado en el alta de {}", newUser.getEmail());
+            log.info("Codigo de invitacion invalido o propio ignorado en el alta de {}", newUser.getId());
             return;
         }
 

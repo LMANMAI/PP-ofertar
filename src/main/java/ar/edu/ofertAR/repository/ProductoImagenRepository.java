@@ -31,6 +31,4 @@ public interface ProductoImagenRepository extends JpaRepository<ProductoImagen, 
     List<String> findEansPendientes(@Param("reintentarAntesDe") LocalDateTime reintentarAntesDe,
                                     @Param("maxIntentos") int maxIntentos,
                                     @Param("limite") int limite);
-
-    long countByEstado(ar.edu.ofertAR.model.EstadoImagen estado);
 }

@@ -130,7 +130,7 @@ class PushNotificationServiceTest {
                             "details", Map.of("error", "DeviceNotRegistered")
                     ))
             );
-            when(restClient.post().uri(any(String.class)).contentType(any()).body(any())
+            when(restClient.post().uri(any(String.class), any(Object[].class)).contentType(any()).body(any(Object.class))
                     .retrieve().body(Map.class)).thenReturn(expoResponse);
 
             service.sendToUser(u, "Titulo", "Cuerpo", Map.of());
@@ -148,7 +148,7 @@ class PushNotificationServiceTest {
             Map<String, Object> expoResponse = Map.of(
                     "data", List.of(Map.of("status", "ok", "id", "receipt-1"))
             );
-            when(restClient.post().uri(any(String.class)).contentType(any()).body(any())
+            when(restClient.post().uri(any(String.class), any(Object[].class)).contentType(any()).body(any(Object.class))
                     .retrieve().body(Map.class)).thenReturn(expoResponse);
 
             service.sendToUser(u, "Titulo", "Cuerpo", Map.of());

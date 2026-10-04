@@ -78,12 +78,28 @@ public class SepaSnapshotService {
      */
     private static final int LOTE_GRUPOS = 200;
 
+    /**
+     * Suma un comercio al agregado del producto. La descripción y la marca que quedan
+     * son las primeras no nulas que llegaron; precio_suma es una columna auxiliar que
+     * {@link #finalizarProductos()} convierte en promedio y elimina.
+     */
+    private static final String UPSERT_PRODUCTO = "INSERT INTO " + TABLA_STAGING
+            + " (ean, descripcion, marca, precio_minimo, precio_maximo, cantidad_ofertas, fecha_dataset, precio_suma)"
+            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE"
+            + " precio_minimo = LEAST(precio_minimo, VALUES(precio_minimo)),"
+            + " precio_maximo = GREATEST(precio_maximo, VALUES(precio_maximo)),"
+            + " cantidad_ofertas = cantidad_ofertas + VALUES(cantidad_ofertas),"
+            + " precio_suma = precio_suma + VALUES(precio_suma),"
+            + " descripcion = COALESCE(descripcion, VALUES(descripcion)),"
+            + " marca = COALESCE(marca, VALUES(marca))";
+
     private static final String INSERT_COMERCIO = "INSERT INTO " + TABLA_COM_STAGING
             + " (ean, comercio_id, bandera, razon_social, precio_minimo, precio_maximo, "
             + "cantidad_sucursales, fecha_dataset) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
     private final SepaService sepaService;
     private final JdbcTemplate jdbcTemplate;
+    private final org.springframework.cache.CacheManager cacheManager;
 
     /** Filas por INSERT batch. Con rewriteBatchedStatements viaja como un solo statement. */
     @Value("${sepa.batch-size:1000}")
@@ -227,7 +243,6 @@ public class SepaSnapshotService {
 
         crearStaging();
 
-        Map<String, Agg> byEan = new HashMap<>(1 << 19);
         AcumuladorComercio acumulador = new AcumuladorComercio(fecha);
 
         SepaService.SepaResource resource = sepaService.scan(dia, null, null, null, p -> {
@@ -237,26 +252,25 @@ public class SepaSnapshotService {
             if (ean == null || ean.isBlank() || precio == null || precio.signum() <= 0) {
                 return;
             }
-            byEan.computeIfAbsent(ean, k -> new Agg(p.descripcion(), p.marca())).add(precio);
             acumulador.acumular(p, precio);
         }, acumulador::iniciarComercio);
 
         acumulador.volcar();   // el último comercio del dataset
-        cargarProductos(byEan, fecha);
+        long productos = finalizarProductos();
         reconstruirIndices();
         swap();
 
         long seconds = (System.currentTimeMillis() - start) / 1000;
         log.info("SEPA snapshot: {} filas -> {} productos, {} precios por comercio, {} sucursales y "
                         + "{} grupos de precio por sucursal en {}s",
-                filasProcesadas.get(), byEan.size(), preciosComercioInsertados.get(),
+                filasProcesadas.get(), productos, preciosComercioInsertados.get(),
                 sucursalesInsertadas.get(), gruposInsertados.get(), seconds);
 
         return SepaSyncResponse.builder()
                 .dia(resource.dia())
                 .fechaDataset(fecha.toString())
                 .filasProcesadas(filasProcesadas.get())
-                .productosGuardados(byEan.size())
+                .productosGuardados(productos)
                 .duracionSegundos(seconds)
                 .build();
     }
@@ -330,7 +344,7 @@ public class SepaSnapshotService {
             comercioId = id;
             bandera = p.bandera();
             razonSocial = p.comercioRazonSocial();
-            porEan.computeIfAbsent(p.ean(), k -> new Agg(null, null)).add(precio);
+            porEan.computeIfAbsent(p.ean(), k -> new Agg(p.descripcion(), p.marca())).add(precio);
             if (grupos != null) {
                 grupos.agregar(p.ean(), p.banderaId(), p.sucursalId(), precio);
             }
@@ -341,6 +355,7 @@ public class SepaSnapshotService {
                 return;
             }
             List<Object[]> batch = new ArrayList<>(batchSize);
+            List<Object[]> productos = new ArrayList<>(batchSize);
             for (Map.Entry<String, Agg> e : porEan.entrySet()) {
                 Agg a = e.getValue();
                 batch.add(new Object[]{
@@ -353,12 +368,26 @@ public class SepaSnapshotService {
                         a.count,
                         Date.valueOf(fecha)
                 });
+                // El agregado por producto se va sumando en la staging comercio a
+                // comercio, en vez de juntar todo el dataset en un mapa en memoria.
+                productos.add(new Object[]{
+                        truncate(e.getKey(), 20),
+                        truncate(a.descripcion, 500),
+                        truncate(a.marca, 255),
+                        a.min,
+                        a.max,
+                        a.count,
+                        Date.valueOf(fecha),
+                        a.sum
+                });
                 if (batch.size() == batchSize) {
                     insertarLote(INSERT_COMERCIO, batch, preciosComercioInsertados);
+                    insertarLote(UPSERT_PRODUCTO, productos, productosInsertados);
                 }
             }
             if (!batch.isEmpty()) {
                 insertarLote(INSERT_COMERCIO, batch, preciosComercioInsertados);
+                insertarLote(UPSERT_PRODUCTO, productos, productosInsertados);
             }
             porEan.clear();
             volcarGrupos();
@@ -390,34 +419,20 @@ public class SepaSnapshotService {
     }
 
     /**
-     * Vuelca el agregado por EAN a la staging, en lotes con commit propio.
-     * El swap lo hace {@link #swap()} recién cuando las dos tablas están listas.
+     * Cierra el agregado por producto que se fue armando en la staging: calcula el
+     * promedio a partir de la suma acumulada y quita la columna auxiliar, para que
+     * la tabla que pasa a producción sea idéntica a la de siempre.
+     *
+     * @return cantidad de productos distintos cargados
      */
-    private void cargarProductos(Map<String, Agg> byEan, LocalDate fecha) {
-        String sql = "INSERT INTO " + TABLA_STAGING + " "
-                + "(ean, descripcion, marca, precio_minimo, precio_promedio, precio_maximo, "
-                + "cantidad_ofertas, fecha_dataset) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-
-        List<Object[]> batch = new ArrayList<>(batchSize);
-        for (Map.Entry<String, Agg> e : byEan.entrySet()) {
-            Agg a = e.getValue();
-            batch.add(new Object[]{
-                    truncate(e.getKey(), 20),
-                    truncate(a.descripcion, 500),
-                    truncate(a.marca, 255),
-                    a.min,
-                    a.avg(),
-                    a.max,
-                    a.count,
-                    Date.valueOf(fecha)
-            });
-            if (batch.size() == batchSize) {
-                insertarLote(sql, batch, productosInsertados);
-            }
-        }
-        if (!batch.isEmpty()) {
-            insertarLote(sql, batch, productosInsertados);
-        }
+    private long finalizarProductos() {
+        jdbcTemplate.update("UPDATE " + TABLA_STAGING
+                + " SET precio_promedio = ROUND(precio_suma / cantidad_ofertas, 2) WHERE cantidad_ofertas > 0");
+        jdbcTemplate.execute("ALTER TABLE " + TABLA_STAGING + " DROP COLUMN precio_suma");
+        Long total = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + TABLA_STAGING, Long.class);
+        long productos = total == null ? 0 : total;
+        productosInsertados.set(productos);
+        return productos;
     }
 
     /**
@@ -451,7 +466,11 @@ public class SepaSnapshotService {
         jdbcTemplate.execute("CREATE TABLE " + TABLA_GRUPO_STAGING + " LIKE " + TABLA_GRUPO);
         // Insertar con los índices secundarios armados cuesta caro: los sacamos
         // y los reconstruimos de una al final. Si falla, seguimos igual.
+        jdbcTemplate.execute("ALTER TABLE " + TABLA_STAGING
+                + " ADD COLUMN precio_suma DECIMAL(28,6) NOT NULL DEFAULT 0");
         soltarIndice(TABLA_STAGING, "idx_sepa_producto_descripcion");
+        soltarIndice(TABLA_STAGING, "ft_sepa_producto_texto");
+        soltarIndice(TABLA_STAGING, "idx_sepa_producto_ofertas");
         soltarIndice(TABLA_COM_STAGING, "idx_sepa_precio_comercio_ean");
         soltarIndice(TABLA_GRUPO_STAGING, "idx_sepa_precio_grupo_ean");
         soltarIndice(TABLA_SUC_STAGING, "idx_sepa_sucursal_ubicacion");
@@ -459,6 +478,8 @@ public class SepaSnapshotService {
 
     private void reconstruirIndices() {
         crearIndice(TABLA_STAGING, "idx_sepa_producto_descripcion", "descripcion");
+        crearIndice(TABLA_STAGING, "idx_sepa_producto_ofertas", "cantidad_ofertas");
+        crearIndiceFulltext(TABLA_STAGING, "ft_sepa_producto_texto", "descripcion, marca");
         crearIndice(TABLA_COM_STAGING, "idx_sepa_precio_comercio_ean", "ean");
         crearIndice(TABLA_GRUPO_STAGING, "idx_sepa_precio_grupo_ean", "ean");
         crearIndice(TABLA_SUC_STAGING, "idx_sepa_sucursal_ubicacion", "latitud, longitud");
@@ -475,6 +496,14 @@ public class SepaSnapshotService {
     private void crearIndice(String tabla, String indice, String columnas) {
         try {
             jdbcTemplate.execute("ALTER TABLE " + tabla + " ADD INDEX " + indice + " (" + columnas + ")");
+        } catch (Exception e) {
+            log.warn("No se pudo recrear {} en {}: {}", indice, tabla, e.getMessage());
+        }
+    }
+
+    private void crearIndiceFulltext(String tabla, String indice, String columnas) {
+        try {
+            jdbcTemplate.execute("ALTER TABLE " + tabla + " ADD FULLTEXT INDEX " + indice + " (" + columnas + ")");
         } catch (Exception e) {
             log.warn("No se pudo recrear {} en {}: {}", indice, tabla, e.getMessage());
         }
@@ -501,6 +530,11 @@ public class SepaSnapshotService {
         jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_COM_VIEJA);
         jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_SUC_VIEJA);
         jdbcTemplate.execute("DROP TABLE IF EXISTS " + TABLA_GRUPO_VIEJA);
+        // Las búsquedas cacheadas son del snapshot anterior.
+        org.springframework.cache.Cache busquedas = cacheManager.getCache(SepaCatalogoService.CACHE_BUSQUEDA);
+        if (busquedas != null) {
+            busquedas.clear();
+        }
         log.info("SEPA snapshot: swap completo, {} productos y {} precios por comercio activos",
                 productosInsertados.get(), preciosComercioInsertados.get());
     }

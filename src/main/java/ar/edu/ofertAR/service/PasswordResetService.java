@@ -5,6 +5,7 @@ import ar.edu.ofertAR.model.User;
 import ar.edu.ofertAR.repository.PasswordResetTokenRepository;
 import ar.edu.ofertAR.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ import java.util.Optional;
  * whether the email has an account, so none of this can be used to find out
  * who is registered.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PasswordResetService {
@@ -76,8 +78,10 @@ public class PasswordResetService {
         PasswordResetToken token = validate(email, code);
         User user = token.getUser();
         user.setPassword(passwordEncoder.encode(newPassword));
+        user.setTokenValidFrom(java.time.Instant.now());
         userRepository.save(user);
         tokenRepository.deleteByUser(user);
+        log.info("AUTH contraseña restablecida por código userId={}", user.getId());
     }
 
     // noRollbackFor on the callers: the attempt counter has to be saved even

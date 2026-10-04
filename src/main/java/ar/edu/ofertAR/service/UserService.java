@@ -8,9 +8,11 @@ import ar.edu.ofertAR.model.User;
 import ar.edu.ofertAR.repository.UserRepository;
 import ar.edu.ofertAR.security.JwtService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -79,7 +81,9 @@ public class UserService {
         user.setEmail(newEmail);
     }
 
-    public void changePassword(User user, ChangePasswordRequest request) {
+    /** Devuelve un token nuevo: el cambio invalida los anteriores, así que quien
+     * cambia la clave no se queda afuera de su propia sesión. */
+    public AuthResponse changePassword(User user, ChangePasswordRequest request) {
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
             throw new IllegalArgumentException("La contraseña actual es incorrecta");
         }
@@ -89,7 +93,14 @@ public class UserService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setTokenValidFrom(java.time.Instant.now());
         userRepository.save(user);
+        log.info("AUTH contraseña cambiada userId={}", user.getId());
+
+        return AuthResponse.builder()
+                .token(jwtService.generateToken(user))
+                .user(toResponse(user))
+                .build();
     }
 
     private UserProfileResponse toResponse(User user) {
