@@ -1,5 +1,6 @@
 package ar.edu.ofertAR.dto.response;
 
+import org.springframework.lang.Nullable;
 import ar.edu.ofertAR.model.SepaPrecioComercio;
 import lombok.Builder;
 
@@ -8,11 +9,11 @@ import java.math.BigDecimal;
 /** Precio de un producto en un comercio, para el comparador. */
 @Builder
 public record ComercioPrecioResponse(
-        String comercioId,
-        String bandera,
-        String razonSocial,
-        BigDecimal precioMinimo,
-        BigDecimal precioMaximo,
+        @Nullable String comercioId,
+        @Nullable String bandera,
+        @Nullable String razonSocial,
+        @Nullable BigDecimal precioMinimo,
+        @Nullable BigDecimal precioMaximo,
         int cantidadSucursales
 ) {
     public static ComercioPrecioResponse from(SepaPrecioComercio p) {

@@ -1,5 +1,6 @@
 package ar.edu.ofertAR.dto.response;
 
+import org.springframework.lang.Nullable;
 import java.math.BigDecimal;
 
 /**
@@ -11,15 +12,15 @@ import java.math.BigDecimal;
  * @param precio  precio de lista de esa sucursal, no el mínimo de la cadena
  */
 public record SucursalPrecioResponse(
-        String comercioId,
-        String banderaId,
-        String bandera,
+        @Nullable String comercioId,
+        @Nullable String banderaId,
+        @Nullable String bandera,
         Long sucursalId,
-        String nombre,
-        String tipo,
-        String direccion,
-        String localidad,
-        String provincia,
+        @Nullable String nombre,
+        @Nullable String tipo,
+        @Nullable String direccion,
+        @Nullable String localidad,
+        @Nullable String provincia,
         double latitud,
         double longitud,
         double distanciaKm,

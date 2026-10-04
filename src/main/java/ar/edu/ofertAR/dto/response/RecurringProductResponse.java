@@ -1,5 +1,7 @@
 package ar.edu.ofertAR.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+import org.springframework.lang.Nullable;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,7 +18,9 @@ import java.util.List;
 public class RecurringProductResponse {
 
     private String description;
+    @Nullable
     private String barcode;
+    @Nullable
     private String category;
     /** Times this product appeared as a line item across all the user's tickets. */
     private long purchaseCount;
@@ -34,10 +38,13 @@ public class RecurringProductResponse {
      *
      * Careful with products sold by weight: this is per kilo, while a catalog
      * offer is per package, so the two are not comparable for those lines. */
+    @Nullable
     private BigDecimal lastPaidPrice;
     /** When that purchase happened, so the app can say "hace 3 semanas". */
+    @Nullable
     private LocalDateTime lastPaidAt;
     /** Null when no current offer was found for this product's brand. */
+    @Nullable
     private BestOffer bestOffer;
     /** Regional campaign promotions matching this product's brand. These are
      * the offers that carry a validity window; {@link BestOffer} is just the
@@ -69,18 +76,23 @@ public class RecurringProductResponse {
          * the kind of product with what the user bought, but not necessarily
          * the size or variety, so the app shows it rather than implying the
          * price is for the exact item on their receipt. */
+        @Nullable
         private String productName;
         /** The retailer's photo of that catalog product, or null when it has
          * none. The app draws it on the recurring-products card and falls back
          * to its own icon when this is absent, so an older scraper that does
          * not send it degrades to exactly the previous appearance. */
+        @Nullable
         private String imageUrl;
         private BigDecimal price;
+        @Nullable
         private BigDecimal listPrice;
+        @Nullable
         private BigDecimal discountPct;
         /** The first of {@link #promoLabels}. Kept because the app has always
          * read a single string here; new clients should read the list, which
          * is the only place the promotion mechanic reliably appears. */
+        @Nullable
         private String promoLabel;
         /** Every promo label the retailer published for this SKU, in order.
          * The chains lead with their bank promotions ("Tarjeta Carrefour 15%"),
@@ -92,10 +104,12 @@ public class RecurringProductResponse {
          * condition; null means the scraper did not report it (an older
          * deploy), which is not the same as "no condition" and must not be
          * rendered as one. */
+        @Nullable
         private Integer requiredQuantity;
         /** Effective unit price when {@link #requiredQuantity} units are
          * bought, for the chains that publish it. Null means the price under
          * the condition is unknown — show the label, not a number. */
+        @Nullable
         private BigDecimal promoUnitPrice;
     }
 
@@ -107,12 +121,17 @@ public class RecurringProductResponse {
         /** Id of the promotion in the offers feed, as "campaign:<externalId>",
          * so the app can open this promotion's full detail — legal text and
          * all — instead of showing a truncated copy of it here. */
+        @Nullable
         private String offerId;
         private String retailerName;
+        @Nullable
         private String province;
+        @Nullable
         private String legalText;
         /** ISO-8601 string as published by the retailer; the app formats it. */
+        @Nullable
         private String activeTo;
+        @Nullable
         private String imageUrl;
         /** Percentages the OCR read off the creative, e.g. [30, 40]. Best guess:
          * these come from reading a promo image, not from a structured field. */
@@ -121,6 +140,8 @@ public class RecurringProductResponse {
         /** second_unit, 3x2, 2x1, percentage_off, or null when unknown. Tells
          * the app whether the percentage is a straight discount or a
          * conditional one, which changes how it must be worded. */
+        @Nullable
+        @Schema(allowableValues = {"second_unit", "3x2", "2x1", "percentage_off"})
         private String mechanic;
         /** The percentage rests on OCR alone, with no campaign metadata to
          * confirm it. The app hedges only in that case. */
@@ -142,20 +163,26 @@ public class RecurringProductResponse {
     @AllArgsConstructor
     public static class PromoMechanic {
         private String retailerName;
+        @Nullable
         private String productName;
+        @Nullable
         private String imageUrl;
         /** What ONE unit costs today, promotion not applied. */
+        @Nullable
         private BigDecimal unitPrice;
+        @Nullable
         private BigDecimal listPrice;
         /** The labels stating the mechanic ("3X2", "80% en la 2da unidad"). */
         @Builder.Default
         private List<String> promoLabels = List.of();
         /** Units required for the promotion to apply; > 1 for anything that
          * belongs in this list. Null only if the scraper omitted it. */
+        @Nullable
         private Integer requiredQuantity;
         /** Effective price per unit once the condition is met, where the chain
          * publishes it (COTO). Null means unknown — show the label, never a
          * number derived here. */
+        @Nullable
         private BigDecimal promoUnitPrice;
     }
 
@@ -165,10 +192,13 @@ public class RecurringProductResponse {
     @AllArgsConstructor
     public static class AlternativeOffer {
         private String productName;
+        @Nullable
         private String brand;
         private String retailerName;
         private BigDecimal price;
+        @Nullable
         private BigDecimal listPrice;
+        @Nullable
         private BigDecimal discountPct;
     }
 }

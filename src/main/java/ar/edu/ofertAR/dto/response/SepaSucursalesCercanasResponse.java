@@ -1,5 +1,6 @@
 package ar.edu.ofertAR.dto.response;
 
+import org.springframework.lang.Nullable;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -13,7 +14,7 @@ import java.util.List;
 public record SepaSucursalesCercanasResponse(
         String ean,
         double radioKm,
-        LocalDate fechaDataset,
+        @Nullable LocalDate fechaDataset,
         List<SucursalPrecioResponse> sucursales
 ) {
 }
