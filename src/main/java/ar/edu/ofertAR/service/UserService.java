@@ -8,9 +8,11 @@ import ar.edu.ofertAR.model.User;
 import ar.edu.ofertAR.repository.UserRepository;
 import ar.edu.ofertAR.security.JwtService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -46,7 +48,39 @@ public class UserService {
                 .build();
     }
 
+<<<<<<< HEAD
     public void changePassword(User user, ChangePasswordRequest request) {
+=======
+    /**
+     * The email is the login identity (the JWT subject) and the destination of
+     * password reset codes, so changing it needs the current password. Same
+     * address, ignoring case, is a no-op and asks for nothing. The token the
+     * caller gets back is issued after this, so it already carries the new email.
+     */
+    private void applyEmailChange(User user, UpdateProfileRequest request) {
+        if (request.getEmail() == null) {
+            return;
+        }
+        String newEmail = request.getEmail().trim();
+        if (newEmail.equalsIgnoreCase(user.getEmail())) {
+            return;
+        }
+        if (request.getCurrentPassword() == null || request.getCurrentPassword().isBlank()) {
+            throw new IllegalArgumentException("Ingresá tu contraseña actual para cambiar el correo");
+        }
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            throw new IllegalArgumentException("La contraseña actual es incorrecta");
+        }
+        if (userRepository.existsByEmail(newEmail)) {
+            throw new IllegalArgumentException("El email ya está registrado");
+        }
+        user.setEmail(newEmail);
+    }
+
+    /** Devuelve un token nuevo: el cambio invalida los anteriores, así que quien
+     * cambia la clave no se queda afuera de su propia sesión. */
+    public AuthResponse changePassword(User user, ChangePasswordRequest request) {
+>>>>>>> 37cf6df (Merge pull request #23 from LMANMAI/auditoria-tecnica)
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
             throw new IllegalArgumentException("La contraseña actual es incorrecta");
         }
@@ -56,7 +90,14 @@ public class UserService {
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setTokenValidFrom(java.time.Instant.now());
         userRepository.save(user);
+        log.info("AUTH contraseña cambiada userId={}", user.getId());
+
+        return AuthResponse.builder()
+                .token(jwtService.generateToken(user))
+                .user(toResponse(user))
+                .build();
     }
 
     private UserProfileResponse toResponse(User user) {
