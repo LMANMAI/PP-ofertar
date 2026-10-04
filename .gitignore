@@ -7,11 +7,6 @@ build/
 !**/src/test/**/build/
 gradle/wrapper/gradle-wrapper.jar
 
-### Maven (legacy — borrar pom.xml, mvnw, mvnw.cmd, .mvn/) ###
-target/
-!**/src/main/**/target/
-!**/src/test/**/target/
-
 ### STS ###
 .apt_generated
 .classpath
