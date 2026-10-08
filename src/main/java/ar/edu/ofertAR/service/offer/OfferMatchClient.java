@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Talks to the external offers-scraper microservice (Node/Express, scrapes
@@ -29,7 +30,25 @@ public class OfferMatchClient {
     public List<OfferMatch> matchProducts(
             List<ProductQuery> items, boolean includeAlternativeBrands, List<String> chainSlugs
     ) {
-        if (items.isEmpty()) return List.of();
+        return tryMatchProducts(items, includeAlternativeBrands, chainSlugs)
+                .orElseGet(() -> items.stream().map(i -> OfferMatch.none()).toList());
+    }
+
+    /**
+     * Same call, but a failure is told apart from "nothing matched": empty
+     * means the scraper could not be reached, not that no product has an
+     * offer.
+     *
+     * <p>A screen is right to treat both the same — there is nothing to show
+     * either way, which is what {@link #matchProducts} does. A job that
+     * remembers whether a product was on promotion is not: reading an outage
+     * as "the promotion ended" would announce the same promotion again as new
+     * the day the scraper came back.
+     */
+    public Optional<List<OfferMatch>> tryMatchProducts(
+            List<ProductQuery> items, boolean includeAlternativeBrands, List<String> chainSlugs
+    ) {
+        if (items.isEmpty()) return Optional.of(List.of());
 
         StringBuilder query = new StringBuilder();
         if (includeAlternativeBrands) query.append("alternativeBrands=true");
@@ -51,11 +70,11 @@ public class OfferMatchClient {
                     .retrieve()
                     .body(Map.class);
 
-            return mapResults(response);
+            return Optional.of(mapResults(response));
         } catch (Exception e) {
             log.warn("No se pudo obtener ofertas del servicio de scraping ({}): {}",
                     offerProperties.getServiceUrl(), e.getMessage());
-            return items.stream().map(i -> OfferMatch.none()).toList();
+            return Optional.empty();
         }
     }
 

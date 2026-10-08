@@ -117,6 +117,34 @@ public class PushNotificationService {
         sendToUser(user, title, body, Map.of("screen", "offers"));
     }
 
+    /** A followed product that went on promotion, as the push names it. */
+    public record FollowedPromo(String description, String retailerName) {}
+
+    /**
+     * One push for everything that went on promotion today among the products
+     * this user follows — FollowedProductAlertService owns deciding which, and
+     * that the list is not empty. One product is named along with the chain;
+     * several are counted, because a notification that lists five products is
+     * read as none.
+     */
+    public void notifyFollowedProductsInPromo(User user, List<FollowedPromo> promos) {
+        if (promos.isEmpty()) {
+            return;
+        }
+        Map<String, String> data = Map.of("screen", "followedProducts");
+        if (promos.size() == 1) {
+            FollowedPromo promo = promos.get(0);
+            String where = promo.retailerName() != null && !promo.retailerName().isBlank()
+                    ? " tiene una promo en " + promo.retailerName() + "."
+                    : " tiene una promo.";
+            sendToUser(user, "Un producto que seguís está en promo", promo.description() + where, data);
+            return;
+        }
+        String others = promos.size() == 2 ? " y " + promos.get(1).description() : " y " + (promos.size() - 1) + " más";
+        sendToUser(user, promos.size() + " productos que seguís están en promo",
+                promos.get(0).description() + others + ".", data);
+    }
+
     // ── Reactivacion — job diario ────────────────────────────────────────
 
     @Scheduled(cron = "${reactivation.cron:0 30 4 * * *}", zone = "America/Argentina/Buenos_Aires")

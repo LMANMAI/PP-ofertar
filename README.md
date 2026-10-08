@@ -128,6 +128,8 @@ La API quedara disponible en `http://localhost:8080`
 - Escaneo por código de barras
 - Carrito manual (el usuario arma su lista sin escanear)
 - Comparación entre últimos tickets para detectar productos faltantes
+- Lista de compras (`/shopping-list`): productos agregados desde el escaneo de un código de barras, con cantidad y tilde de "ya en el carrito". Una lista por usuario
+- Productos seguidos (`/products/followed`): productos que el usuario sigue sin haberlos comprado. Un job diario (`followed.alert-cron`, por defecto 5:20, hora Argentina) consulta el servicio de ofertas en sus cadenas favoritas y manda una notificación push cuando alguno entra en promo
 
 ### Precios
 - Comparador de precios entre supermercados (carrito completo y productos individuales)

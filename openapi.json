@@ -1,6 +1,32 @@
 {
   "components" : {
     "schemas" : {
+      "AddShoppingListItemRequest" : {
+        "properties" : {
+          "brand" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "description" : {
+            "maxLength" : 300,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "ean" : {
+            "minLength" : 1,
+            "pattern" : "\\d{8,14}",
+            "type" : "string"
+          },
+          "quantity" : {
+            "format" : "int32",
+            "maximum" : 99,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
       "AlternativeOffer" : {
         "properties" : {
           "brand" : {
@@ -206,6 +232,86 @@
           }
         },
         "required" : [ "chainSlugs", "radiusKm" ],
+        "type" : "object"
+      },
+      "FollowProductRequest" : {
+        "properties" : {
+          "brand" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "description" : {
+            "maxLength" : 300,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "ean" : {
+            "minLength" : 1,
+            "pattern" : "\\d{8,14}",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "FollowedProductResponse" : {
+        "properties" : {
+          "bestOffer" : {
+            "allOf" : [ {
+              "$ref" : "#/components/schemas/BestOffer"
+            } ],
+            "nullable" : true
+          },
+          "brand" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "campaignOffers" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CampaignOffer"
+            },
+            "type" : "array"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "ean" : {
+            "type" : "string"
+          },
+          "followedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "imageUrl" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "inPromo" : {
+            "type" : "boolean"
+          },
+          "promoMechanics" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PromoMechanic"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [ "bestOffer", "brand", "campaignOffers", "description", "ean", "followedAt", "imageUrl", "inPromo", "promoMechanics" ],
+        "type" : "object"
+      },
+      "FollowedProductsResponse" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/FollowedProductResponse"
+            },
+            "type" : "array"
+          },
+          "promosChecked" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "items", "promosChecked" ],
         "type" : "object"
       },
       "ForgotPasswordRequest" : {
@@ -972,6 +1078,56 @@
         "required" : [ "dia", "duracionSegundos", "error", "estado", "fechaDataset", "filasProcesadas", "fin", "inicio", "productosGuardados", "productosInsertados" ],
         "type" : "object"
       },
+      "ShoppingListItemResponse" : {
+        "properties" : {
+          "addedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "brand" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "checked" : {
+            "type" : "boolean"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "ean" : {
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "imageUrl" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "quantity" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "addedAt", "brand", "checked", "description", "ean", "id", "imageUrl", "quantity" ],
+        "type" : "object"
+      },
+      "ShoppingListResponse" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ShoppingListItemResponse"
+            },
+            "type" : "array"
+          },
+          "name" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "items", "name" ],
+        "type" : "object"
+      },
       "SortObject" : {
         "properties" : {
           "empty" : {
@@ -1262,6 +1418,20 @@
             "maxLength" : 2097152,
             "minLength" : 0,
             "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "UpdateShoppingListItemRequest" : {
+        "properties" : {
+          "checked" : {
+            "type" : "boolean"
+          },
+          "quantity" : {
+            "format" : "int32",
+            "maximum" : 99,
+            "minimum" : 1,
+            "type" : "integer"
           }
         },
         "type" : "object"
@@ -1586,6 +1756,83 @@
           }
         },
         "tags" : [ "points-controller" ]
+      }
+    },
+    "/products/followed" : {
+      "get" : {
+        "operationId" : "list",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FollowedProductsResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "followed-product-controller" ]
+      },
+      "post" : {
+        "operationId" : "follow",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/FollowProductRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "followed-product-controller" ]
+      }
+    },
+    "/products/followed/eans" : {
+      "get" : {
+        "operationId" : "listEans",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "type" : "string"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "followed-product-controller" ]
+      }
+    },
+    "/products/followed/{ean}" : {
+      "delete" : {
+        "operationId" : "unfollow",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "ean",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "followed-product-controller" ]
       }
     },
     "/products/recurring" : {
@@ -1927,6 +2174,132 @@
         },
         "summary" : "Estado de la sincronización en curso o de la última ejecutada (solo ADMIN)",
         "tags" : [ "SEPA" ]
+      }
+    },
+    "/shopping-list" : {
+      "get" : {
+        "operationId" : "get",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ShoppingListResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "shopping-list-controller" ]
+      }
+    },
+    "/shopping-list/checked" : {
+      "delete" : {
+        "operationId" : "clearChecked",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ShoppingListResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "shopping-list-controller" ]
+      }
+    },
+    "/shopping-list/items" : {
+      "post" : {
+        "operationId" : "addItem",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AddShoppingListItemRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ShoppingListResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "shopping-list-controller" ]
+      }
+    },
+    "/shopping-list/items/{itemId}" : {
+      "delete" : {
+        "operationId" : "removeItem",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "itemId",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ShoppingListResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "shopping-list-controller" ]
+      },
+      "put" : {
+        "operationId" : "updateItem",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "itemId",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateShoppingListItemRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ShoppingListResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "shopping-list-controller" ]
       }
     },
     "/stores/chains" : {
