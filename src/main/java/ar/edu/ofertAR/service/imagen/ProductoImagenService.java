@@ -20,7 +20,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Resuelve y cachea la URL de la imagen de cada producto, por EAN.
@@ -80,6 +86,14 @@ public class ProductoImagenService {
     private int colaMaxima;
 
     /** EANs que un usuario pidió y no teníamos. Se atienden antes que el top N. */
+    /** Tope de tiempo de la consulta externa dentro de un request de usuario. */
+    @Value("${imagenes.externo-timeout-ms:1500}")
+    private long externoTimeoutMs;
+
+    /** Consultas externas simultaneas permitidas desde requests; el resto responde sin esperar. */
+    private final Semaphore externoLibres = new Semaphore(8);
+    private final ExecutorService externoExecutor = Executors.newVirtualThreadPerTaskExecutor();
+
     private final LinkedBlockingQueue<String> colaPrioritaria = new LinkedBlockingQueue<>();
     /** Evita encolar mil veces el mismo EAN mientras espera turno. */
     private final Set<String> enCola = ConcurrentHashMap.newKeySet();
@@ -263,6 +277,33 @@ public class ProductoImagenService {
         if (normalizado == null || !enabled) {
             return Optional.empty();
         }
+        // Acotada: pocas consultas a la vez y con tope de tiempo. Si no hay lugar
+        // o el tercero tarda, la app recibe "no encontrado" al instante en vez de
+        // ocupar hilos de Tomcat detras del throttle.
+        if (!externoLibres.tryAcquire()) {
+            log.debug("Consulta externa omitida para {}: hay {} en curso", normalizado, 8);
+            return Optional.empty();
+        }
+        Future<Optional<ProductoExterno>> tarea = externoExecutor.submit(() -> consultarProveedores(normalizado));
+        try {
+            return tarea.get(externoTimeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            tarea.cancel(true);
+            log.debug("Consulta externa de {} superó {} ms", normalizado, externoTimeoutMs);
+            return Optional.empty();
+        } catch (InterruptedException e) {
+            tarea.cancel(true);
+            Thread.currentThread().interrupt();
+            return Optional.empty();
+        } catch (java.util.concurrent.ExecutionException e) {
+            log.warn("Consulta externa fallo para {}: {}", normalizado, e.getCause().getMessage());
+            return Optional.empty();
+        } finally {
+            externoLibres.release();
+        }
+    }
+
+    private Optional<ProductoExterno> consultarProveedores(String normalizado) {
         for (ImagenProvider provider : cadena) {
             try {
                 Optional<ProductoExterno> externo = provider.buscar(normalizado);
@@ -278,17 +319,6 @@ public class ProductoImagenService {
             }
         }
         return Optional.empty();
-    }
-
-    /** URL de imagen ya resuelta para un EAN, sin consultar a nadie. */
-    public Optional<String> imagenGuardada(String ean) {
-        String normalizado = normalizarEan(ean);
-        if (normalizado == null) {
-            return Optional.empty();
-        }
-        return repository.findById(normalizado)
-                .filter(i -> i.getEstado() == EstadoImagen.OK)
-                .map(ProductoImagen::getUrl);
     }
 
     private void guardar(String ean, String url, String fuente, EstadoImagen estado, int intentos) {

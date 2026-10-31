@@ -22,12 +22,12 @@ Backend de OfertAR, encargado del procesamiento de tickets (OCR + IA), comparaci
 
 | Capa | Tecnología |
 |---|---|
-| Lenguaje | Java 17 |
+| Lenguaje | Java 21 |
 | Framework | Spring Boot 3.5.0 |
 | Persistencia | Spring Data JPA + Hibernate |
 | Base de datos | MySQL |
 | Seguridad | Spring Security |
-| Build tool | Maven (via Maven Wrapper) |
+| Build tool | Gradle (via Gradle Wrapper) |
 | Utilidades | Lombok, Spring Validation |
 | Tests | JUnit 5 + Spring Security Test |
 
@@ -52,16 +52,16 @@ PP-ofertar/
 │   │       └── application.properties      # Config de entorno
 │   └── test/
 ├── pom.xml
-└── mvnw / mvnw.cmd                         # Maven Wrapper (no requiere instalación)
+└── gradlew / gradlew.bat                   # Gradle Wrapper (no requiere instalación)
 ```
 
 ---
 
 ## Requisitos previos
 
-- Java 17+
+- Java 21
 - MySQL 8+
-- No se requiere Maven instalado (se usa el wrapper incluido `./mvnw`)
+- No se requiere Gradle instalado (se usa el wrapper incluido `./gradlew`)
 
 ---
 
@@ -73,15 +73,19 @@ Crear la base de datos en MySQL:
 CREATE DATABASE ofertar_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Editar `src/main/resources/application.properties`:
+La configuración sale de variables de entorno (ver `.env.example`). Son obligatorias y no tienen valor por
+defecto, la app no arranca si falta alguna: `DB_PASSWORD`, `JWT_SECRET` (32+ caracteres) y `OCR_PASSWORD`.
+Además: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `CORS_ALLOWED_ORIGINS` (solo si hay cliente web).
 
-```properties
-spring.datasource.url=jdbc:mysql://localhost:3306/ofertar_db
-spring.datasource.username=tu_usuario
-spring.datasource.password=tu_password
-spring.jpa.hibernate.ddl-auto=update
-spring.jpa.show-sql=true
-```
+El esquema de la base lo gestiona **Flyway** (`src/main/resources/db/migration`); Hibernate solo valida
+(`ddl-auto=validate`). Todo cambio de entidad necesita una migración nueva `V<n>__descripcion.sql`.
+
+En desarrollo local activar el perfil `dev` (`SPRING_PROFILES_ACTIVE=dev`): muestra el SQL, habilita Swagger
+en `/docs` y escribe en el log el código de recuperación de contraseña. Sin perfil la app corre con la
+configuración segura de producción.
+
+Los endpoints `/sepa/precios` y `/sepa/sync` requieren un usuario con rol `ADMIN`
+(`UPDATE users SET role = 'ADMIN' WHERE email = '...'`).
 
 ---
 
@@ -92,15 +96,17 @@ spring.jpa.show-sql=true
 git clone https://github.com/LMANMAI/PP-ofertar.git
 cd PP-ofertar
 
-# Compilar y correr (Linux/Mac)
-./mvnw spring-boot:run
+# Variables de entorno (Linux/Mac; en PowerShell usar $env:NOMBRE = "valor")
+export DB_PASSWORD=... JWT_SECRET=... OCR_PASSWORD=... SPRING_PROFILES_ACTIVE=dev
 
-# Compilar y correr (Windows)
-mvnw.cmd spring-boot:run
+# Compilar y correr (Windows: gradlew.bat)
+./gradlew bootRun
 
-# Correr tests
-./mvnw test
+# Correr tests (necesitan un MySQL accesible con esas variables)
+./gradlew test
 ```
+
+Health check: `GET /actuator/health`.
 
 La API quedara disponible en `http://localhost:8080`
 
@@ -122,6 +128,7 @@ La API quedara disponible en `http://localhost:8080`
 - Escaneo por código de barras
 - Carrito manual (el usuario arma su lista sin escanear)
 - Comparación entre últimos tickets para detectar productos faltantes
+- Productos seguidos (`/products/followed`): productos que el usuario sigue sin haberlos comprado. Un job diario (`followed.alert-cron`, por defecto 5:20, hora Argentina) consulta el servicio de ofertas en sus cadenas favoritas y manda una notificación push cuando alguno entra en promo
 
 ### Precios
 - Comparador de precios entre supermercados (carrito completo y productos individuales)
@@ -156,3 +163,18 @@ La API quedara disponible en `http://localhost:8080`
 ## CI/CD
 
 - **Backport automático:** al mergear un PR a `main`, se abre automáticamente un PR de backport hacia `develop`.
+
+---
+
+## Contrato de la API (OpenAPI)
+
+`openapi.json` en la raíz es el contrato que consume el frontend para generar sus tipos. Está versionado y el test
+`OpenApiExportTest` falla si quedó desactualizado. Tras cambiar un DTO o un endpoint:
+
+```bash
+./gradlew test --tests '*OpenApiExportTest' -Dopenapi.update=true
+```
+
+y commitear el `openapi.json` resultante. En los DTO de respuesta (`dto/response`) todo campo es obligatorio y no nulo
+salvo que esté anotado con `@Nullable` (viene siempre, pero puede valer `null`); los valores fijos se declaran con
+`@Schema(allowableValues = ...)`. Después, en el repo de la app: `npm run api:sync && npm run api:types`.

@@ -1,5 +1,6 @@
 package ar.edu.ofertAR.dto.response;
 
+import org.springframework.lang.Nullable;
 import ar.edu.ofertAR.model.TicketStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,10 +18,15 @@ import java.util.List;
 public class TicketResponse {
 
     private Long id;
+    @Nullable
     private String storeName;
+    @Nullable
     private String ticketId;
+    @Nullable
     private BigDecimal total;
+    @Nullable
     private BigDecimal subtotal;
+    @Nullable
     private BigDecimal totalDiscounts;
     private TicketStatus status;
     /** False until the user has opened and confirmed the finished ticket.

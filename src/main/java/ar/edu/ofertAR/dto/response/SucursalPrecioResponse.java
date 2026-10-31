@@ -1,5 +1,6 @@
 package ar.edu.ofertAR.dto.response;
 
+import org.springframework.lang.Nullable;
 import java.math.BigDecimal;
 
 /**
@@ -12,15 +13,15 @@ import java.math.BigDecimal;
  * @param horarios horario de atención de esa sucursal; null si SEPA no lo informa
  */
 public record SucursalPrecioResponse(
-        String comercioId,
-        String banderaId,
-        String bandera,
+        @Nullable String comercioId,
+        @Nullable String banderaId,
+        @Nullable String bandera,
         Long sucursalId,
-        String nombre,
-        String tipo,
-        String direccion,
-        String localidad,
-        String provincia,
+        @Nullable String nombre,
+        @Nullable String tipo,
+        @Nullable String direccion,
+        @Nullable String localidad,
+        @Nullable String provincia,
         double latitud,
         double longitud,
         double distanciaKm,

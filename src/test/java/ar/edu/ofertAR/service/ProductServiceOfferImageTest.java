@@ -5,6 +5,7 @@ import ar.edu.ofertAR.model.Ticket;
 import ar.edu.ofertAR.model.TicketItem;
 import ar.edu.ofertAR.model.TicketStatus;
 import ar.edu.ofertAR.model.User;
+import ar.edu.ofertAR.repository.FollowedProductRepository;
 import ar.edu.ofertAR.repository.TicketRepository;
 import ar.edu.ofertAR.service.offer.OfferMatchClient;
 import ar.edu.ofertAR.service.offer.OfferMatchClient.OfferMatch;
@@ -50,7 +51,8 @@ class ProductServiceOfferImageTest {
         ticketRepository = mock(TicketRepository.class);
         offerMatchClient = mock(OfferMatchClient.class);
         favoriteStoreService = mock(FavoriteStoreService.class);
-        productService = new ProductService(ticketRepository, offerMatchClient, favoriteStoreService);
+        productService = new ProductService(ticketRepository, offerMatchClient, favoriteStoreService,
+                mock(FollowedProductRepository.class));
 
         user = User.builder().id(7L).name("Alex").email("alex@test").password("x").build();
         when(favoriteStoreService.getFavoriteChainSlugs(any())).thenReturn(List.of());

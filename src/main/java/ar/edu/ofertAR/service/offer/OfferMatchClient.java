@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Talks to the external offers-scraper microservice (Node/Express, scrapes
@@ -29,7 +30,25 @@ public class OfferMatchClient {
     public List<OfferMatch> matchProducts(
             List<ProductQuery> items, boolean includeAlternativeBrands, List<String> chainSlugs
     ) {
-        if (items.isEmpty()) return List.of();
+        return tryMatchProducts(items, includeAlternativeBrands, chainSlugs)
+                .orElseGet(() -> items.stream().map(i -> OfferMatch.none()).toList());
+    }
+
+    /**
+     * Same call, but a failure is told apart from "nothing matched": empty
+     * means the scraper could not be reached, not that no product has an
+     * offer.
+     *
+     * <p>A screen is right to treat both the same — there is nothing to show
+     * either way, which is what {@link #matchProducts} does. A job that
+     * remembers whether a product was on promotion is not: reading an outage
+     * as "the promotion ended" would announce the same promotion again as new
+     * the day the scraper came back.
+     */
+    public Optional<List<OfferMatch>> tryMatchProducts(
+            List<ProductQuery> items, boolean includeAlternativeBrands, List<String> chainSlugs
+    ) {
+        if (items.isEmpty()) return Optional.of(List.of());
 
         StringBuilder query = new StringBuilder();
         if (includeAlternativeBrands) query.append("alternativeBrands=true");
@@ -51,11 +70,11 @@ public class OfferMatchClient {
                     .retrieve()
                     .body(Map.class);
 
-            return mapResults(response);
+            return Optional.of(mapResults(response));
         } catch (Exception e) {
             log.warn("No se pudo obtener ofertas del servicio de scraping ({}): {}",
                     offerProperties.getServiceUrl(), e.getMessage());
-            return items.stream().map(i -> OfferMatch.none()).toList();
+            return Optional.empty();
         }
     }
 
@@ -68,6 +87,7 @@ public class OfferMatchClient {
         List<OfferMatch> matches = new ArrayList<>();
         for (Map<String, Object> result : results) {
             String matchedBrand = (String) result.get("matchedBrand");
+            String bestOfferMethod = (String) result.get("bestOfferMethod");
             Map<String, Object> best = (Map<String, Object>) result.get("bestCatalogOffer");
             List<AlternativeOffer> alternatives = mapAlternatives(result.get("alternativeBrandOffers"));
             List<CampaignOffer> campaigns = mapCampaigns(result.get("campaignOffers"));
@@ -79,7 +99,7 @@ public class OfferMatchClient {
 
             if (best == null) {
                 matches.add(new OfferMatch(matchedBrand, null, null, null, null, null, null,
-                        null, List.of(), null, null, mechanics, alternatives, campaigns));
+                        null, List.of(), null, null, mechanics, alternatives, campaigns, bestOfferMethod));
                 continue;
             }
 
@@ -98,7 +118,8 @@ public class OfferMatchClient {
                     toBigDecimal(best.get("promoUnitPrice")),
                     mechanics,
                     alternatives,
-                    campaigns
+                    campaigns,
+                    bestOfferMethod
             ));
         }
         return matches;
@@ -382,7 +403,14 @@ public class OfferMatchClient {
              * case — so this list is populated even when there is no offer. */
             List<PromoMechanic> promoMechanics,
             List<AlternativeOffer> alternativeOffers,
-            List<CampaignOffer> campaignOffers
+            List<CampaignOffer> campaignOffers,
+            /** Cómo encontró el scraper la oferta de catálogo: "ean" (el código
+             * de barras es exactamente ese artículo), "brand_text" (misma marca
+             * y tipo de producto por texto, que puede ser otro producto) o null
+             * (sin oferta, o un scraper anterior al campo). Solo habla de la
+             * oferta de catálogo: las mecánicas y las campañas se buscan siempre
+             * por marca. */
+            String bestOfferMethod
     ) {
         /** Every list here is read straight onto a screen, so they are
          * normalised once instead of at every use: absent and empty mean the
@@ -394,13 +422,32 @@ public class OfferMatchClient {
             campaignOffers = campaignOffers == null ? List.of() : List.copyOf(campaignOffers);
         }
 
+        /** Sin {@code bestOfferMethod}: lo que contesta un scraper anterior
+         * al campo, y por eso nunca cuenta como match por EAN. */
+        public OfferMatch(
+                String matchedBrand, String retailerName, String productName, String imageUrl,
+                BigDecimal price, BigDecimal listPrice, BigDecimal discountPct,
+                String promoLabel, List<String> promoLabels, Integer requiredQuantity,
+                BigDecimal promoUnitPrice, List<PromoMechanic> promoMechanics,
+                List<AlternativeOffer> alternativeOffers, List<CampaignOffer> campaignOffers
+        ) {
+            this(matchedBrand, retailerName, productName, imageUrl, price, listPrice, discountPct,
+                    promoLabel, promoLabels, requiredQuantity, promoUnitPrice, promoMechanics,
+                    alternativeOffers, campaignOffers, null);
+        }
+
         public static OfferMatch none() {
             return new OfferMatch(null, null, null, null, null, null, null,
-                    null, List.of(), null, null, List.of(), List.of(), List.of());
+                    null, List.of(), null, null, List.of(), List.of(), List.of(), null);
         }
 
         public boolean hasOffer() {
             return retailerName != null && price != null;
+        }
+
+        /** La oferta de catálogo es de este mismo artículo, por código de barras. */
+        public boolean bestOfferByEan() {
+            return hasOffer() && "ean".equals(bestOfferMethod);
         }
     }
 }

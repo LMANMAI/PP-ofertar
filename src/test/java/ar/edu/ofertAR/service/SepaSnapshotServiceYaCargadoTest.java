@@ -8,6 +8,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.BadSqlGrammarException;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -36,7 +37,7 @@ class SepaSnapshotServiceYaCargadoTest {
     @Mock private JdbcTemplate jdbcTemplate;
 
     private SepaSnapshotService service() {
-        return new SepaSnapshotService(sepaService, jdbcTemplate);
+        return new SepaSnapshotService(sepaService, jdbcTemplate, new ConcurrentMapCacheManager());
     }
 
     private void disponible(String fecha) {

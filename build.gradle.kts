@@ -29,6 +29,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-mail")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-cache")
+    implementation("com.github.ben-manes.caffeine:caffeine")
 
     // OpenAPI / Swagger
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.6")
@@ -40,6 +43,10 @@ dependencies {
 
     // DB
     runtimeOnly("com.mysql:mysql-connector-j")
+
+    // Migraciones de esquema
+    implementation("org.flywaydb:flyway-core")
+    implementation("org.flywaydb:flyway-mysql")
 
     // Lombok
     compileOnly("org.projectlombok:lombok")
@@ -56,4 +63,6 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // Para regenerar openapi.json: ./gradlew test -Dopenapi.update=true
+    systemProperty("openapi.update", System.getProperty("openapi.update", "false"))
 }

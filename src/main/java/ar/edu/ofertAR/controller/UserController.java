@@ -33,11 +33,10 @@ public class UserController {
     }
 
     @PutMapping("/password")
-    public ResponseEntity<Void> changePassword(
+    public ResponseEntity<AuthResponse> changePassword(
             @AuthenticationPrincipal User user,
             @Valid @RequestBody ChangePasswordRequest request
     ) {
-        userService.changePassword(user, request);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(userService.changePassword(user, request));
     }
 }

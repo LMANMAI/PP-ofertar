@@ -7,12 +7,16 @@ import ar.edu.ofertAR.dto.response.UserProfileResponse;
 import ar.edu.ofertAR.model.User;
 import ar.edu.ofertAR.repository.UserRepository;
 import ar.edu.ofertAR.security.JwtService;
+import ar.edu.ofertAR.security.LoginAttemptService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -22,8 +26,9 @@ public class AuthService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final PointsService pointsService;
+    private final LoginAttemptService loginAttempts;
 
-    public AuthResponse register(RegisterRequest request) {
+    public AuthResponse register(RegisterRequest request, String ip) {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new IllegalArgumentException("El email ya está registrado");
         }
@@ -39,19 +44,29 @@ public class AuthService {
         pointsService.applyReferralSignup(user, request.getReferralCode());
 
         String token = jwtService.generateToken(user);
+        log.info("AUTH registro userId={} ip={}", user.getId(), ip);
 
         return buildAuthResponse(user, token);
     }
 
-    public AuthResponse login(LoginRequest request) {
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-        );
+    public AuthResponse login(LoginRequest request, String ip) {
+        loginAttempts.verificarPermitido(ip, request.getEmail());
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+            );
+        } catch (BadCredentialsException e) {
+            loginAttempts.registrarFallo(ip, request.getEmail());
+            log.warn("AUTH login fallido ip={} email#={}", ip, LoginAttemptService.huella(request.getEmail()));
+            throw e;
+        }
+        loginAttempts.registrarExito(request.getEmail());
 
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
 
         String token = jwtService.generateToken(user);
+        log.info("AUTH login ok userId={} ip={}", user.getId(), ip);
 
         return buildAuthResponse(user, token);
     }

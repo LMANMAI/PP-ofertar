@@ -1,5 +1,6 @@
 package ar.edu.ofertAR.dto.response;
 
+import org.springframework.lang.Nullable;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,7 +18,9 @@ import java.util.Map;
 public class ApiErrorResponse {
 
     private int status;
+    @Nullable
     private String message;
+    @Nullable
     private Map<String, String> errors;
 
     @Builder.Default

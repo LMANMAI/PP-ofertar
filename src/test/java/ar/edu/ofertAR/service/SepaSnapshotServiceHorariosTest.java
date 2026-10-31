@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -61,7 +62,7 @@ class SepaSnapshotServiceHorariosTest {
                     return new int[0];
                 });
 
-        SepaSnapshotService service = new SepaSnapshotService(sepaService, jdbcTemplate);
+        SepaSnapshotService service = new SepaSnapshotService(sepaService, jdbcTemplate, new ConcurrentMapCacheManager());
         ReflectionTestUtils.setField(service, "batchSize", 1000);
         service.sync(null);
 
