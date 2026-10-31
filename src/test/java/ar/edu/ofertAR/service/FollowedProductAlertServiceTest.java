@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Optional;
 
 import static ar.edu.ofertAR.service.FollowedProductServiceTest.catalog;
+import static ar.edu.ofertAR.service.FollowedProductServiceTest.catalogOf;
+import static ar.edu.ofertAR.service.FollowedProductServiceTest.withLooseMechanicOnly;
 import static ar.edu.ofertAR.service.FollowedProductServiceTest.withMechanic;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -151,12 +153,30 @@ class FollowedProductAlertServiceTest {
     @Test
     @DisplayName("varios productos que entran en promo el mismo día van en un solo aviso")
     void severalProducts_oneNotification() {
-        follows(product("Gaseosa", false, null), product("Yerba", false, null), product("Arroz", false, null));
-        offersAnswer(withMechanic(), OfferMatch.none(), catalog("900", "1200", List.of(), null));
+        follows(product("Gaseosa", false, null), product("Yerba", false, null), product("Arroz Gallo Oro", false, null));
+        offersAnswer(withMechanic(), OfferMatch.none(), catalogOf("Arroz largo fino Gallo Oro 1 kg", "brand_text"));
 
         service.runFollowedProductAlertJob();
 
-        assertEquals(List.of(new FollowedPromo("Gaseosa", "Coto"), new FollowedPromo("Arroz", "Carrefour")), announced());
+        assertEquals(List.of(new FollowedPromo("Gaseosa", "Coto"), new FollowedPromo("Arroz Gallo Oro", "Carrefour")),
+                announced());
+    }
+
+    @Test
+    @DisplayName("una promo que es solo de otro producto parecido no se avisa ni se registra como promo")
+    void looseOnlyMatch_isNotAnnounced() {
+        FollowedProduct gaseosa = product("Gaseosa Coca Cola 2.25 L", false, null);
+        FollowedProduct yerba = product("Yerba Playadito 1 kg", false, null);
+        follows(gaseosa, yerba);
+        // Lo que la app muestra como "Promo de otro producto" y "Similar en".
+        offersAnswer(withLooseMechanicOnly(), catalogOf("Mate cocido Playadito 25 saquitos", "brand_text"));
+
+        service.runFollowedProductAlertJob();
+
+        verifyNoInteractions(pushNotificationService);
+        assertFalse(gaseosa.isInPromo());
+        assertFalse(yerba.isInPromo());
+        verify(repository, never()).saveAll(any());
     }
 
     @Test

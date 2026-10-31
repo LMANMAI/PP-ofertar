@@ -87,6 +87,7 @@ public class OfferMatchClient {
         List<OfferMatch> matches = new ArrayList<>();
         for (Map<String, Object> result : results) {
             String matchedBrand = (String) result.get("matchedBrand");
+            String bestOfferMethod = (String) result.get("bestOfferMethod");
             Map<String, Object> best = (Map<String, Object>) result.get("bestCatalogOffer");
             List<AlternativeOffer> alternatives = mapAlternatives(result.get("alternativeBrandOffers"));
             List<CampaignOffer> campaigns = mapCampaigns(result.get("campaignOffers"));
@@ -98,7 +99,7 @@ public class OfferMatchClient {
 
             if (best == null) {
                 matches.add(new OfferMatch(matchedBrand, null, null, null, null, null, null,
-                        null, List.of(), null, null, mechanics, alternatives, campaigns));
+                        null, List.of(), null, null, mechanics, alternatives, campaigns, bestOfferMethod));
                 continue;
             }
 
@@ -117,7 +118,8 @@ public class OfferMatchClient {
                     toBigDecimal(best.get("promoUnitPrice")),
                     mechanics,
                     alternatives,
-                    campaigns
+                    campaigns,
+                    bestOfferMethod
             ));
         }
         return matches;
@@ -401,7 +403,14 @@ public class OfferMatchClient {
              * case — so this list is populated even when there is no offer. */
             List<PromoMechanic> promoMechanics,
             List<AlternativeOffer> alternativeOffers,
-            List<CampaignOffer> campaignOffers
+            List<CampaignOffer> campaignOffers,
+            /** Cómo encontró el scraper la oferta de catálogo: "ean" (el código
+             * de barras es exactamente ese artículo), "brand_text" (misma marca
+             * y tipo de producto por texto, que puede ser otro producto) o null
+             * (sin oferta, o un scraper anterior al campo). Solo habla de la
+             * oferta de catálogo: las mecánicas y las campañas se buscan siempre
+             * por marca. */
+            String bestOfferMethod
     ) {
         /** Every list here is read straight onto a screen, so they are
          * normalised once instead of at every use: absent and empty mean the
@@ -413,13 +422,32 @@ public class OfferMatchClient {
             campaignOffers = campaignOffers == null ? List.of() : List.copyOf(campaignOffers);
         }
 
+        /** Sin {@code bestOfferMethod}: lo que contesta un scraper anterior
+         * al campo, y por eso nunca cuenta como match por EAN. */
+        public OfferMatch(
+                String matchedBrand, String retailerName, String productName, String imageUrl,
+                BigDecimal price, BigDecimal listPrice, BigDecimal discountPct,
+                String promoLabel, List<String> promoLabels, Integer requiredQuantity,
+                BigDecimal promoUnitPrice, List<PromoMechanic> promoMechanics,
+                List<AlternativeOffer> alternativeOffers, List<CampaignOffer> campaignOffers
+        ) {
+            this(matchedBrand, retailerName, productName, imageUrl, price, listPrice, discountPct,
+                    promoLabel, promoLabels, requiredQuantity, promoUnitPrice, promoMechanics,
+                    alternativeOffers, campaignOffers, null);
+        }
+
         public static OfferMatch none() {
             return new OfferMatch(null, null, null, null, null, null, null,
-                    null, List.of(), null, null, List.of(), List.of(), List.of());
+                    null, List.of(), null, null, List.of(), List.of(), List.of(), null);
         }
 
         public boolean hasOffer() {
             return retailerName != null && price != null;
+        }
+
+        /** La oferta de catálogo es de este mismo artículo, por código de barras. */
+        public boolean bestOfferByEan() {
+            return hasOffer() && "ean".equals(bestOfferMethod);
         }
     }
 }

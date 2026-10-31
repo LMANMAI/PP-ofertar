@@ -4,7 +4,9 @@ import ar.edu.ofertAR.dto.response.RecurringProductResponse;
 import ar.edu.ofertAR.model.Ticket;
 import ar.edu.ofertAR.model.TicketItem;
 import ar.edu.ofertAR.model.TicketStatus;
+import ar.edu.ofertAR.model.FollowedProduct;
 import ar.edu.ofertAR.model.User;
+import ar.edu.ofertAR.repository.FollowedProductRepository;
 import ar.edu.ofertAR.repository.TicketRepository;
 import ar.edu.ofertAR.service.offer.OfferMatchClient;
 import ar.edu.ofertAR.service.offer.OfferMatchClient.OfferMatch;
@@ -33,6 +35,7 @@ public class ProductService {
     private final TicketRepository ticketRepository;
     private final OfferMatchClient offerMatchClient;
     private final FavoriteStoreService favoriteStoreService;
+    private final FollowedProductRepository followedProductRepository;
 
     public List<RecurringProductResponse> getRecurringProducts(User user, Long ticketId) {
         List<Ticket> tickets = ticketRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
@@ -58,6 +61,12 @@ public class ProductService {
                 user.isAlternativeBrandsEnabled(),
                 favoriteStoreService.getFavoriteChainSlugs(user));
 
+        // Una sola query por request, no una por producto.
+        List<String> followedEans = followedProductRepository.findByUserIdOrderByCreatedAtDescIdDesc(user.getId())
+                .stream()
+                .map(FollowedProduct::getEan)
+                .toList();
+
         return IntStream.range(0, top.size())
                 .mapToObj(i -> {
                     ProductGroup g = top.get(i);
@@ -71,6 +80,7 @@ public class ProductService {
                             .purchaseCount(g.purchaseCount)
                             .ticketCount(g.ticketCount)
                             .inReferenceTicket(inReference)
+                            .followed(followedEans.stream().anyMatch(ean -> ProductKeys.sameEan(ean, g.barcode)))
                             .totalDiscounts(g.totalDiscounts)
                             .lastPaidPrice(g.lastPaidPrice)
                             .lastPaidAt(g.lastPaidAt)

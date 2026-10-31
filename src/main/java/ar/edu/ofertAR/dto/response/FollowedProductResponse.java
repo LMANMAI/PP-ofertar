@@ -27,7 +27,18 @@ public class FollowedProductResponse {
     @Nullable
     private String imageUrl;
     private LocalDateTime followedAt;
-    /** Something below is populated. Always false when the list answers with
+    /** Fecha del ticket procesado más reciente del usuario con un ítem cuyo
+     * código de barras es este producto (comparado por EAN normalizado). Null
+     * si nunca lo compró, o si lo compró pero el ticket no trajo el código: los
+     * ítems sin código de barras no se pueden reconocer. */
+    @Nullable
+    private LocalDateTime lastPurchasedAt;
+    /** Hay una promo de ESTE producto: una oferta de catálogo encontrada por
+     * EAN o con un nombre que no es de otro producto, una mecánica (3x2, 2da
+     * unidad) de este producto, o una campaña de su marca. Las listas de abajo
+     * pueden traer además promos de productos parecidos, que la app marca como
+     * "Similar" / "Promo de otro producto" y que por sí solas no ponen esto en
+     * true. Always false when the list answers with
      * {@code promosChecked = false}. */
     private boolean inPromo;
     @Nullable

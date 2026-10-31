@@ -10,8 +10,8 @@ import java.time.LocalDateTime;
  * having bought it (recurring products come from tickets; this one comes from
  * a barcode scan).
  *
- * As in {@link ShoppingListItem}, the name and brand are a copy taken when the
- * user followed it.
+ * El nombre y la marca son una copia tomada al seguirlo, así la lista y el
+ * aviso no dependen de que el producto siga apareciendo en la búsqueda.
  */
 @Entity
 @Table(

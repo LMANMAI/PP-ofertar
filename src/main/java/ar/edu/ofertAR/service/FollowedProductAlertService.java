@@ -91,7 +91,7 @@ public class FollowedProductAlertService {
         for (int i = 0; i < followed.size() && i < matches.size(); i++) {
             FollowedProduct product = followed.get(i);
             OfferMatch match = matches.get(i);
-            boolean inPromo = FollowedProductService.isInPromo(match);
+            boolean inPromo = FollowedProductService.isInPromo(product.getDescription(), match);
             if (inPromo == product.isInPromo()) {
                 continue;
             }
@@ -101,7 +101,8 @@ public class FollowedProductAlertService {
             if (inPromo && cooledDown(product, now)) {
                 product.setLastNotifiedAt(now);
                 toAnnounce.add(new PushNotificationService.FollowedPromo(
-                        product.getDescription(), FollowedProductService.promoRetailer(match)));
+                        product.getDescription(),
+                        FollowedProductService.promoRetailer(product.getDescription(), match)));
             }
         }
 

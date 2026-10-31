@@ -1,32 +1,6 @@
 {
   "components" : {
     "schemas" : {
-      "AddShoppingListItemRequest" : {
-        "properties" : {
-          "brand" : {
-            "maxLength" : 255,
-            "minLength" : 0,
-            "type" : "string"
-          },
-          "description" : {
-            "maxLength" : 300,
-            "minLength" : 0,
-            "type" : "string"
-          },
-          "ean" : {
-            "minLength" : 1,
-            "pattern" : "\\d{8,14}",
-            "type" : "string"
-          },
-          "quantity" : {
-            "format" : "int32",
-            "maximum" : 99,
-            "minimum" : 1,
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
       "AlternativeOffer" : {
         "properties" : {
           "brand" : {
@@ -289,6 +263,11 @@
           "inPromo" : {
             "type" : "boolean"
           },
+          "lastPurchasedAt" : {
+            "format" : "date-time",
+            "nullable" : true,
+            "type" : "string"
+          },
           "promoMechanics" : {
             "items" : {
               "$ref" : "#/components/schemas/PromoMechanic"
@@ -296,7 +275,7 @@
             "type" : "array"
           }
         },
-        "required" : [ "bestOffer", "brand", "campaignOffers", "description", "ean", "followedAt", "imageUrl", "inPromo", "promoMechanics" ],
+        "required" : [ "bestOffer", "brand", "campaignOffers", "description", "ean", "followedAt", "imageUrl", "inPromo", "lastPurchasedAt", "promoMechanics" ],
         "type" : "object"
       },
       "FollowedProductsResponse" : {
@@ -654,6 +633,9 @@
           "description" : {
             "type" : "string"
           },
+          "followed" : {
+            "type" : "boolean"
+          },
           "inReferenceTicket" : {
             "type" : "boolean"
           },
@@ -684,7 +666,7 @@
             "type" : "number"
           }
         },
-        "required" : [ "alternativeOffers", "barcode", "bestOffer", "campaignOffers", "category", "description", "inReferenceTicket", "lastPaidAt", "lastPaidPrice", "promoMechanics", "purchaseCount", "ticketCount", "totalDiscounts" ],
+        "required" : [ "alternativeOffers", "barcode", "bestOffer", "campaignOffers", "category", "description", "followed", "inReferenceTicket", "lastPaidAt", "lastPaidPrice", "promoMechanics", "purchaseCount", "ticketCount", "totalDiscounts" ],
         "type" : "object"
       },
       "RedeemRequest" : {
@@ -1078,56 +1060,6 @@
         "required" : [ "dia", "duracionSegundos", "error", "estado", "fechaDataset", "filasProcesadas", "fin", "inicio", "productosGuardados", "productosInsertados" ],
         "type" : "object"
       },
-      "ShoppingListItemResponse" : {
-        "properties" : {
-          "addedAt" : {
-            "format" : "date-time",
-            "type" : "string"
-          },
-          "brand" : {
-            "nullable" : true,
-            "type" : "string"
-          },
-          "checked" : {
-            "type" : "boolean"
-          },
-          "description" : {
-            "type" : "string"
-          },
-          "ean" : {
-            "type" : "string"
-          },
-          "id" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "imageUrl" : {
-            "nullable" : true,
-            "type" : "string"
-          },
-          "quantity" : {
-            "format" : "int32",
-            "type" : "integer"
-          }
-        },
-        "required" : [ "addedAt", "brand", "checked", "description", "ean", "id", "imageUrl", "quantity" ],
-        "type" : "object"
-      },
-      "ShoppingListResponse" : {
-        "properties" : {
-          "items" : {
-            "items" : {
-              "$ref" : "#/components/schemas/ShoppingListItemResponse"
-            },
-            "type" : "array"
-          },
-          "name" : {
-            "type" : "string"
-          }
-        },
-        "required" : [ "items", "name" ],
-        "type" : "object"
-      },
       "SortObject" : {
         "properties" : {
           "empty" : {
@@ -1418,20 +1350,6 @@
             "maxLength" : 2097152,
             "minLength" : 0,
             "type" : "string"
-          }
-        },
-        "type" : "object"
-      },
-      "UpdateShoppingListItemRequest" : {
-        "properties" : {
-          "checked" : {
-            "type" : "boolean"
-          },
-          "quantity" : {
-            "format" : "int32",
-            "maximum" : 99,
-            "minimum" : 1,
-            "type" : "integer"
           }
         },
         "type" : "object"
@@ -2174,132 +2092,6 @@
         },
         "summary" : "Estado de la sincronización en curso o de la última ejecutada (solo ADMIN)",
         "tags" : [ "SEPA" ]
-      }
-    },
-    "/shopping-list" : {
-      "get" : {
-        "operationId" : "get",
-        "responses" : {
-          "200" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ShoppingListResponse"
-                }
-              }
-            },
-            "description" : "OK"
-          }
-        },
-        "tags" : [ "shopping-list-controller" ]
-      }
-    },
-    "/shopping-list/checked" : {
-      "delete" : {
-        "operationId" : "clearChecked",
-        "responses" : {
-          "200" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ShoppingListResponse"
-                }
-              }
-            },
-            "description" : "OK"
-          }
-        },
-        "tags" : [ "shopping-list-controller" ]
-      }
-    },
-    "/shopping-list/items" : {
-      "post" : {
-        "operationId" : "addItem",
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/AddShoppingListItemRequest"
-              }
-            }
-          },
-          "required" : true
-        },
-        "responses" : {
-          "200" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ShoppingListResponse"
-                }
-              }
-            },
-            "description" : "OK"
-          }
-        },
-        "tags" : [ "shopping-list-controller" ]
-      }
-    },
-    "/shopping-list/items/{itemId}" : {
-      "delete" : {
-        "operationId" : "removeItem",
-        "parameters" : [ {
-          "in" : "path",
-          "name" : "itemId",
-          "required" : true,
-          "schema" : {
-            "format" : "int64",
-            "type" : "integer"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ShoppingListResponse"
-                }
-              }
-            },
-            "description" : "OK"
-          }
-        },
-        "tags" : [ "shopping-list-controller" ]
-      },
-      "put" : {
-        "operationId" : "updateItem",
-        "parameters" : [ {
-          "in" : "path",
-          "name" : "itemId",
-          "required" : true,
-          "schema" : {
-            "format" : "int64",
-            "type" : "integer"
-          }
-        } ],
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/UpdateShoppingListItemRequest"
-              }
-            }
-          },
-          "required" : true
-        },
-        "responses" : {
-          "200" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ShoppingListResponse"
-                }
-              }
-            },
-            "description" : "OK"
-          }
-        },
-        "tags" : [ "shopping-list-controller" ]
       }
     },
     "/stores/chains" : {
