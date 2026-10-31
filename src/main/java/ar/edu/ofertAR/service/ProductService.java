@@ -4,11 +4,14 @@ import ar.edu.ofertAR.dto.response.RecurringProductResponse;
 import ar.edu.ofertAR.model.Ticket;
 import ar.edu.ofertAR.model.TicketItem;
 import ar.edu.ofertAR.model.TicketStatus;
+import ar.edu.ofertAR.model.FollowedProduct;
 import ar.edu.ofertAR.model.User;
+import ar.edu.ofertAR.repository.FollowedProductRepository;
 import ar.edu.ofertAR.repository.TicketRepository;
 import ar.edu.ofertAR.service.offer.OfferMatchClient;
 import ar.edu.ofertAR.service.offer.OfferMatchClient.OfferMatch;
 import ar.edu.ofertAR.service.offer.OfferMatchClient.ProductQuery;
+import ar.edu.ofertAR.service.offer.OfferMatchMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +35,7 @@ public class ProductService {
     private final TicketRepository ticketRepository;
     private final OfferMatchClient offerMatchClient;
     private final FavoriteStoreService favoriteStoreService;
+    private final FollowedProductRepository followedProductRepository;
 
     public List<RecurringProductResponse> getRecurringProducts(User user, Long ticketId) {
         List<Ticket> tickets = ticketRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
@@ -57,6 +61,12 @@ public class ProductService {
                 user.isAlternativeBrandsEnabled(),
                 favoriteStoreService.getFavoriteChainSlugs(user));
 
+        // Una sola query por request, no una por producto.
+        List<String> followedEans = followedProductRepository.findByUserIdOrderByCreatedAtDescIdDesc(user.getId())
+                .stream()
+                .map(FollowedProduct::getEan)
+                .toList();
+
         return IntStream.range(0, top.size())
                 .mapToObj(i -> {
                     ProductGroup g = top.get(i);
@@ -70,62 +80,14 @@ public class ProductService {
                             .purchaseCount(g.purchaseCount)
                             .ticketCount(g.ticketCount)
                             .inReferenceTicket(inReference)
+                            .followed(followedEans.stream().anyMatch(ean -> ProductKeys.sameEan(ean, g.barcode)))
                             .totalDiscounts(g.totalDiscounts)
                             .lastPaidPrice(g.lastPaidPrice)
                             .lastPaidAt(g.lastPaidAt)
-                            .campaignOffers(match.campaignOffers().stream()
-                                    .map(c -> RecurringProductResponse.CampaignOffer.builder()
-                                            .offerId(c.externalId() != null ? "campaign:" + c.externalId() : null)
-                                            .retailerName(c.retailerName())
-                                            .province(c.province())
-                                            .legalText(c.legalText())
-                                            .activeTo(c.activeTo())
-                                            .imageUrl(c.imageUrl())
-                                            .discountPercentages(c.discountPercentages())
-                                            .mechanic(c.mechanic())
-                                            .percentagesUnverified(c.percentagesUnverified())
-                                            .build())
-                                    .toList())
-                            .bestOffer(match.hasOffer()
-                                    ? RecurringProductResponse.BestOffer.builder()
-                                            .retailerName(match.retailerName())
-                                            .productName(match.productName())
-                                            .imageUrl(match.imageUrl())
-                                            .price(match.price())
-                                            .listPrice(match.listPrice())
-                                            .discountPct(match.discountPct())
-                                            .promoLabel(match.promoLabel())
-                                            .promoLabels(match.promoLabels())
-                                            .requiredQuantity(match.requiredQuantity())
-                                            .promoUnitPrice(match.promoUnitPrice())
-                                            .build()
-                                    : null)
-                            // Outside the bestOffer branch: these products have
-                            // no unit discount by definition, so gating them on
-                            // hasOffer() would drop exactly the promotions the
-                            // user complained about never seeing.
-                            .promoMechanics(match.promoMechanics().stream()
-                                    .map(m -> RecurringProductResponse.PromoMechanic.builder()
-                                            .retailerName(m.retailerName())
-                                            .productName(m.productName())
-                                            .imageUrl(m.imageUrl())
-                                            .unitPrice(m.unitPrice())
-                                            .listPrice(m.listPrice())
-                                            .promoLabels(m.promoLabels())
-                                            .requiredQuantity(m.requiredQuantity())
-                                            .promoUnitPrice(m.promoUnitPrice())
-                                            .build())
-                                    .toList())
-                            .alternativeOffers(match.alternativeOffers().stream()
-                                    .map(a -> RecurringProductResponse.AlternativeOffer.builder()
-                                            .productName(a.productName())
-                                            .brand(a.brand())
-                                            .retailerName(a.retailerName())
-                                            .price(a.price())
-                                            .listPrice(a.listPrice())
-                                            .discountPct(a.discountPct())
-                                            .build())
-                                    .toList())
+                            .campaignOffers(OfferMatchMapper.campaignOffers(match))
+                            .bestOffer(OfferMatchMapper.bestOffer(match))
+                            .promoMechanics(OfferMatchMapper.promoMechanics(match))
+                            .alternativeOffers(OfferMatchMapper.alternativeOffers(match))
                             .build();
                 })
                 .toList();

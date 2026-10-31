@@ -27,6 +27,7 @@ import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -220,6 +221,67 @@ class PushNotificationServiceTest {
             service.runReactivationJob();
 
             verify(userRepository).save(u);
+        }
+    }
+
+    @Nested
+    @DisplayName("productos seguidos en promo")
+    class FollowedProductsInPromo {
+
+        private PushNotificationService spied;
+
+        @BeforeEach
+        void spyOnSend() {
+            spied = spy(service);
+            lenient().doNothing().when(spied).sendToUser(any(), any(), any(), any());
+        }
+
+        private String[] sent() {
+            ArgumentCaptor<String> title = ArgumentCaptor.forClass(String.class);
+            ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
+            verify(spied).sendToUser(any(), title.capture(), body.capture(), eq(Map.of("screen", "followedProducts")));
+            return new String[] {title.getValue(), body.getValue()};
+        }
+
+        @Test
+        @DisplayName("uno solo: se nombra el producto y la cadena")
+        void one_namesProductAndChain() {
+            spied.notifyFollowedProductsInPromo(user(1L),
+                    List.of(new PushNotificationService.FollowedPromo("Gaseosa Coca Cola 2.25 L", "Coto")));
+
+            assertArrayEquals(new String[] {
+                    "Un producto que seguís está en promo",
+                    "Gaseosa Coca Cola 2.25 L tiene una promo en Coto."}, sent());
+        }
+
+        @Test
+        @DisplayName("sin cadena conocida no se inventa una")
+        void one_withoutChain() {
+            spied.notifyFollowedProductsInPromo(user(1L),
+                    List.of(new PushNotificationService.FollowedPromo("Yerba", null)));
+
+            assertEquals("Yerba tiene una promo.", sent()[1]);
+        }
+
+        @Test
+        @DisplayName("varios: se cuentan en vez de listarlos todos")
+        void several_areCounted() {
+            spied.notifyFollowedProductsInPromo(user(1L), List.of(
+                    new PushNotificationService.FollowedPromo("Gaseosa", "Coto"),
+                    new PushNotificationService.FollowedPromo("Yerba", "Jumbo"),
+                    new PushNotificationService.FollowedPromo("Arroz", null)));
+
+            assertArrayEquals(new String[] {
+                    "3 productos que seguís están en promo",
+                    "Gaseosa y 2 más."}, sent());
+        }
+
+        @Test
+        @DisplayName("sin nada que avisar no se manda nada")
+        void none_sendsNothing() {
+            spied.notifyFollowedProductsInPromo(user(1L), List.of());
+
+            verify(spied, never()).sendToUser(any(), any(), any(), any());
         }
     }
 

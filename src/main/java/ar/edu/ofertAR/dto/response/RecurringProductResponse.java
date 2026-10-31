@@ -31,6 +31,11 @@ public class RecurringProductResponse {
      * {@code ticketId}, or the user's most recent one when none was given.
      * Drives both the shopping-list checklist and the "forgot to buy?" prompt. */
     private boolean inReferenceTicket;
+    /** Si el usuario sigue este producto: su código de barras es, por EAN
+     * normalizado, el de uno de sus productos seguidos. Así la app reconoce que
+     * el producto seguido y el del ticket son el mismo y no lo muestra dos
+     * veces. Siempre false para un producto sin código de barras. */
+    private boolean followed;
     private BigDecimal totalDiscounts;
     /** Unit price the user actually paid the last time they bought it, so the
      * app can put a current offer against their own history instead of only

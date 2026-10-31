@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -376,6 +377,31 @@ class OfferMatchClientPromoMechanicsTest {
         // expectations once a request has gone through it.
         assertTrue(matchOne(OLD_SCRAPER).promoMechanics().isEmpty(),
                 "a missing key must not reach the app as a null list");
+    }
+
+    @Test
+    @DisplayName("bestOfferMethod \"ean\": la oferta de catálogo es de ese mismo artículo")
+    void readsBestOfferMethodEan() {
+        OfferMatch match = matchOne(MANY_LABELS);
+        assertEquals("ean", match.bestOfferMethod());
+        assertTrue(match.bestOfferByEan());
+    }
+
+    @Test
+    @DisplayName("bestOfferMethod \"brand_text\": puede ser otro producto de la marca")
+    void readsBestOfferMethodBrandText() {
+        OfferMatch match = matchOne(MECHANICS_WITHOUT_OFFER);
+        assertEquals("brand_text", match.bestOfferMethod());
+        assertFalse(match.bestOfferByEan());
+    }
+
+    @Test
+    @DisplayName("un scraper que no manda bestOfferMethod nunca cuenta como match por EAN")
+    void missingBestOfferMethod_isNotByEan() {
+        OfferMatch match = matchOne(OLD_SCRAPER);
+        assertNull(match.bestOfferMethod());
+        assertFalse(match.bestOfferByEan());
+        assertFalse(OfferMatch.none().bestOfferByEan());
     }
 
     @Test
