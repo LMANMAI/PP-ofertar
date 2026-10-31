@@ -67,6 +67,10 @@ public class SepaService {
     @Value("${sepa.cache-dir:${java.io.tmpdir}/sepa-cache}")
     private String cacheDir;
 
+    // Fuente del zip, de mayor a menor precedencia (ver resolvedOverride):
+    // SEPA_RESOURCE_FILE > SEPA_RESOURCE_DIR > SEPA_RESOURCE_URL > CKAN en vivo.
+    // Sin ninguna seteada se usa CKAN, como siempre.
+
     /** Espejo http/https del zip (opcional; esquiva el 403 de la IP). */
     @Value("${sepa.resource-url:}")
     private String resourceUrlOverride;
@@ -75,7 +79,11 @@ public class SepaService {
     @Value("${sepa.resource-file:}")
     private String resourceFileOverride;
 
-    /** Fecha del dataset (YYYY-MM-DD) cuando no se puede extraer del nombre. */
+    /**
+     * Fecha del dataset (YYYY-MM-DD) para SEPA_RESOURCE_FILE y SEPA_RESOURCE_URL.
+     * Con la carpeta vigilada no se usa: cada zip trae la suya, y una fecha fija
+     * haría que el cron diera por cargado cualquier zip nuevo.
+     */
     @Value("${sepa.resource-fecha:}")
     private String resourceFechaOverride;
 
@@ -189,6 +197,20 @@ public class SepaService {
         return resolveResource(dia);
     }
 
+    /**
+     * true si la fuente activa es la carpeta vigilada (SEPA_RESOURCE_DIR sin
+     * SEPA_RESOURCE_FILE, que le gana). Es el único modo en que el sync
+     * programado se saltea un dataset ya cargado: el cron corre seguido para
+     * tomar el zip apenas lo deja el relay.
+     */
+    public boolean usaCarpetaVigilada() {
+        return isBlank(resourceFileOverride) && !isBlank(resourceDirOverride);
+    }
+
+    private static boolean isBlank(String valor) {
+        return valor == null || valor.isBlank();
+    }
+
     // ── 1. Resolver recurso vía API CKAN ─────────────────────────────
 
     private SepaResource resolveResource(String dia) {
@@ -256,8 +278,9 @@ public class SepaService {
 
     /**
      * Override para esquivar el 403 por IP de datos.produccion.gob.ar: permite
-     * apuntar a un espejo del zip (URL pública o archivo local del contenedor).
-     * Devuelve vacío si no hay override configurado (se sigue usando CKAN).
+     * apuntar a un espejo del zip (archivo local del contenedor, carpeta
+     * vigilada o URL pública). Devuelve vacío si no hay override configurado
+     * (se sigue usando CKAN).
      */
     private Optional<SepaResource> resolvedOverride() {
         // Precedencia: archivo fijo > carpeta vigilada > espejo http. El
@@ -270,9 +293,19 @@ public class SepaService {
             fuente = archivo.toUri().toString();
             fechaDelContenido = fechaDelZip(archivo);
         } else if (resourceDirOverride != null && !resourceDirOverride.isBlank()) {
+            // zipMasReciente sólo devuelve zips con fecha legible, y esa fecha
+            // manda: SEPA_RESOURCE_FECHA es para un archivo o URL puntual. Si
+            // valiera acá, todos los zips que deje el relay tendrían la misma
+            // fecha y el cron daría por cargado cualquiera nuevo.
             ZipEnCarpeta masReciente = zipMasReciente(Path.of(resourceDirOverride));
             fuente = masReciente.archivo().toUri().toString();
-            fechaDelContenido = masReciente.fecha();
+            if (!isBlank(resourceFechaOverride)) {
+                log.warn("SEPA: SEPA_RESOURCE_FECHA se ignora con SEPA_RESOURCE_DIR; "
+                        + "vale la fecha de cada zip ({})", masReciente.fecha());
+            }
+            log.info("SEPA: recurso de la carpeta vigilada (fecha {}): {}",
+                    masReciente.fecha(), displayUrl(fuente));
+            return Optional.of(new SepaResource(masReciente.fecha(), masReciente.fecha(), fuente));
         } else if (resourceUrlOverride != null && !resourceUrlOverride.isBlank()) {
             fuente = resourceUrlOverride;
         } else {

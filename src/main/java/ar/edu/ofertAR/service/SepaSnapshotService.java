@@ -142,11 +142,16 @@ public class SepaSnapshotService {
      * (SEPA_RESOURCE_DIR) el cron corre cada hora para tomar el zip apenas lo
      * deja el relay, y sin este chequeo reimportaría los mismos ~300 MB cada
      * vez. El sync manual (/sepa/sync) no pasa por acá y siempre importa.
+     *
+     * <p>Con las demás fuentes (CKAN, SEPA_RESOURCE_FILE, SEPA_RESOURCE_URL) el
+     * cron importa siempre, como antes: no se agrega una consulta a CKAN antes
+     * de cada sync y un mismo archivo fijo se vuelve a cargar si cambió el código
+     * que lo procesa (p.ej. los horarios, que se completan en la próxima carga).
      */
     @Scheduled(cron = "${sepa.sync-cron:0 0 3 * * MON}", zone = "America/Argentina/Buenos_Aires")
     public void scheduledSync() {
         try {
-            if (datasetYaCargado()) {
+            if (sepaService.usaCarpetaVigilada() && datasetYaCargado()) {
                 return;
             }
             lanzarAsync(null);

@@ -263,5 +263,48 @@ class SepaServiceCarpetaVigiladaTest {
             assertEquals(forzado.toUri().toString(), recurso.url());
             assertEquals("2026-09-15", recurso.fecha());
         }
+
+        @Test
+        @DisplayName("la carpeta le gana al espejo http: así se pasa de SEPA_RESOURCE_URL al relay sin borrar nada")
+        void carpetaLeGanaALaUrl(@TempDir Path dir) throws IOException {
+            Path martes = zipSepa(dir, "sepa_martes.zip", "2026-09-15");
+            SepaService sepa = sepa();
+            ReflectionTestUtils.setField(sepa, "resourceDirOverride", dir.toString());
+            ReflectionTestUtils.setField(sepa, "resourceUrlOverride", "https://espejo.example/sepa_2026-09-01.zip");
+
+            SepaService.SepaResource recurso = sepa.resolverRecurso(null);
+
+            assertEquals(martes.toUri().toString(), recurso.url());
+            assertEquals("2026-09-15", recurso.fecha());
+        }
+
+        @Test
+        @DisplayName("con la carpeta, SEPA_RESOURCE_FECHA no pisa la fecha de cada zip")
+        void carpetaIgnoraLaFechaFija(@TempDir Path dir) throws IOException {
+            zipSepa(dir, "sepa_martes.zip", "2026-09-15");
+            SepaService sepa = sepa();
+            ReflectionTestUtils.setField(sepa, "resourceDirOverride", dir.toString());
+            // Una fecha fija que quedó de cuando se usaba SEPA_RESOURCE_FILE: si
+            // mandara, el cron vería siempre la misma y no importaría nada nuevo.
+            ReflectionTestUtils.setField(sepa, "resourceFechaOverride", "2026-09-01");
+
+            assertEquals("2026-09-15", sepa.resolverRecurso(null).fecha());
+        }
+
+        @Test
+        @DisplayName("usaCarpetaVigilada: sólo cuando la carpeta es la fuente activa")
+        void usaCarpetaVigilada(@TempDir Path dir) {
+            SepaService sepa = sepa();
+            assertFalse(sepa.usaCarpetaVigilada(), "sin nada seteado es CKAN en vivo");
+
+            ReflectionTestUtils.setField(sepa, "resourceUrlOverride", "https://espejo.example/sepa.zip");
+            assertFalse(sepa.usaCarpetaVigilada(), "con sólo la URL es el espejo");
+
+            ReflectionTestUtils.setField(sepa, "resourceDirOverride", dir.toString());
+            assertTrue(sepa.usaCarpetaVigilada(), "la carpeta le gana a la URL");
+
+            ReflectionTestUtils.setField(sepa, "resourceFileOverride", dir.resolve("sepa.zip").toString());
+            assertFalse(sepa.usaCarpetaVigilada(), "el archivo fijo le gana a la carpeta");
+        }
     }
 }

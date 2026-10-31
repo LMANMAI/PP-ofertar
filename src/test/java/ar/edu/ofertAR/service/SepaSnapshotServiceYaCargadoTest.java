@@ -5,10 +5,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.BadSqlGrammarException;
-import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -115,6 +115,7 @@ class SepaSnapshotServiceYaCargadoTest {
     @Test
     @DisplayName("cron con el dataset ya cargado: no arranca ningún sync")
     void cronSeSaltea() {
+        when(sepaService.usaCarpetaVigilada()).thenReturn(true);
         disponible("2026-09-15");
         cargado(LocalDate.of(2026, 9, 15));
         SepaSnapshotService service = service();
@@ -129,6 +130,7 @@ class SepaSnapshotServiceYaCargadoTest {
     @Test
     @DisplayName("cron con un dataset nuevo: arranca el sync")
     void cronImportaLoNuevo() {
+        when(sepaService.usaCarpetaVigilada()).thenReturn(true);
         disponible("2026-09-16");
         cargado(LocalDate.of(2026, 9, 15));
 
@@ -141,10 +143,24 @@ class SepaSnapshotServiceYaCargadoTest {
     @Test
     @DisplayName("si no hay zip en la carpeta, el cron avisa y no revienta")
     void sinZipNoRevienta() {
+        when(sepaService.usaCarpetaVigilada()).thenReturn(true);
         when(sepaService.resolverRecurso(null)).thenThrow(new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                 "No hay ningún zip SEPA válido en SEPA_RESOURCE_DIR (¿corrió el relay?)"));
 
         assertDoesNotThrow(() -> service().scheduledSync());
         verify(sepaService, never()).scan(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("sin carpeta vigilada (CKAN, archivo o URL) el cron importa como antes, sin mirar lo cargado")
+    void sinCarpetaImportaSiempre() {
+        when(sepaService.usaCarpetaVigilada()).thenReturn(false);
+        disponible("2026-09-15");
+
+        service().scheduledSync();
+
+        // Aunque el sync de fondo llegue a escanear, nunca se preguntó qué fecha hay cargada.
+        verify(sepaService, timeout(5000)).scan(any(), any(), any(), any(), any(), any());
+        verify(jdbcTemplate, never()).queryForObject(startsWith("SELECT MAX(fecha_dataset)"), eq(LocalDate.class));
     }
 }

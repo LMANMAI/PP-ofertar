@@ -38,7 +38,7 @@ sudo chmod 755 /opt/ofertar/sepa-incoming
 - **Environment:**
   - `SEPA_RESOURCE_DIR=/data/sepa-incoming`
   - `SEPA_SYNC_CRON=0 20 * * * *` (cada hora, a los :20)
-  - **Borrá** `SEPA_RESOURCE_FILE` y `SEPA_RESOURCE_FECHA` si estaban: el archivo fijo le gana a la carpeta.
+  - **Borrá** `SEPA_RESOURCE_FILE` si estaba: el archivo fijo le gana a la carpeta. `SEPA_RESOURCE_URL` puede quedar (la carpeta le gana) y `SEPA_RESOURCE_FECHA` se ignora con la carpeta, pero mejor borrarlas también.
 - Deploy.
 
 ### 3. En la PC: una clave SSH sólo para esto
@@ -96,7 +96,7 @@ Para borrarla: `.\instalar-tarea.ps1 -Desinstalar`.
   - `0`: subido, o nada nuevo.
   - `1`: configuración mal. No se arregla sola; revisá el log.
   - `2`: transitorio (sitio caído, red, SSH). Se reintenta en la próxima hora.
-- **En el backend:** el log dice `SEPA: recurso por override (fecha …)` al importar, y `el dataset disponible (…) ya está cargado` cuando no hay nada nuevo. `GET /sepa/sync/estado` muestra la última sincronización.
+- **En el backend:** el log dice `SEPA: recurso de la carpeta vigilada (fecha …)` al resolver el zip, y `el dataset disponible (…) ya está cargado` cuando no hay nada nuevo. `GET /sepa/sync/estado` muestra la última sincronización.
 
 ## Pruebas
 

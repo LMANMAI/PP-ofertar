@@ -87,6 +87,27 @@ configuración segura de producción.
 Los endpoints `/sepa/precios` y `/sepa/sync` requieren un usuario con rol `ADMIN`
 (`UPDATE users SET role = 'ADMIN' WHERE email = '...'`).
 
+### Dataset SEPA (precios por sucursal)
+
+El snapshot de SEPA (`SepaSnapshotService`) baja el zip del dataset y lo carga en `sepa_producto`,
+`sepa_sucursal` y compañía. `datos.produccion.gob.ar` responde 403 a IPs de datacenter, así que la fuente
+es configurable. Todas las variables son opcionales; se usa la primera fuente seteada:
+
+| Prioridad | Variable | Fuente |
+|---|---|---|
+| 1 | `SEPA_RESOURCE_FILE` | Un zip fijo dentro del contenedor. Gana siempre: sirve para forzar un dataset puntual. |
+| 2 | `SEPA_RESOURCE_DIR` | Carpeta vigilada: el zip más reciente por la fecha de su contenido. La llena [`tools/sepa-relay`](tools/sepa-relay/README.md) desde una PC en Argentina. |
+| 3 | `SEPA_RESOURCE_URL` | Un zip espejo http/https. |
+| 4 | — | CKAN en vivo (`SEPA_CKAN_PACKAGE_URL`). |
+
+- `SEPA_RESOURCE_FECHA` (`YYYY-MM-DD`): sólo para `FILE` o `URL`, cuando no se puede leer de adentro del zip
+  (su carpeta `YYYY-MM-DD/`) ni del nombre. Con `SEPA_RESOURCE_DIR` se ignora.
+- `SEPA_SYNC_CRON`: cron del sync programado (por defecto `0 0 3 * * MON`, hora Argentina). Con
+  `SEPA_RESOURCE_DIR` conviene uno frecuente (`0 20 * * * *`): en ese modo el sync programado se saltea si el
+  zip más nuevo no es posterior a `sepa_producto.fecha_dataset`. Con las demás fuentes importa siempre, y
+  `POST /sepa/sync` (manual) también.
+- `SEPA_BATCH_SIZE` / `SEPA_BATCH_PAUSA_MS`: tamaño de lote y pausa entre lotes de la carga.
+
 ---
 
 ## Inicio rápido
