@@ -26,6 +26,6 @@ public record SucursalPrecioResponse(
         double longitud,
         double distanciaKm,
         BigDecimal precio,
-        HorariosResponse horarios
+        @Nullable HorariosResponse horarios
 ) {
 }

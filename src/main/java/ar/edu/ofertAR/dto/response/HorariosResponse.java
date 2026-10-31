@@ -3,6 +3,7 @@ package ar.edu.ofertAR.dto.response;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import org.springframework.lang.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
@@ -28,13 +29,13 @@ import java.util.Objects;
 @JsonInclude(JsonInclude.Include.ALWAYS)
 @JsonPropertyOrder({"lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"})
 public record HorariosResponse(
-        List<FranjaHorariaResponse> lunes,
-        List<FranjaHorariaResponse> martes,
-        List<FranjaHorariaResponse> miercoles,
-        List<FranjaHorariaResponse> jueves,
-        List<FranjaHorariaResponse> viernes,
-        List<FranjaHorariaResponse> sabado,
-        List<FranjaHorariaResponse> domingo
+        @Nullable List<FranjaHorariaResponse> lunes,
+        @Nullable List<FranjaHorariaResponse> martes,
+        @Nullable List<FranjaHorariaResponse> miercoles,
+        @Nullable List<FranjaHorariaResponse> jueves,
+        @Nullable List<FranjaHorariaResponse> viernes,
+        @Nullable List<FranjaHorariaResponse> sabado,
+        @Nullable List<FranjaHorariaResponse> domingo
 ) {
 
     /** Abierto las 24 horas: la única franja que ocupa el día entero. */
