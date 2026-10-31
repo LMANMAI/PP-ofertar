@@ -2,6 +2,8 @@ package ar.edu.ofertAR.service;
 
 import ar.edu.ofertAR.dto.response.SepaPrecioResponse;
 import ar.edu.ofertAR.dto.response.SepaPreciosPageResponse;
+import ar.edu.ofertAR.service.horario.HorarioParser;
+import ar.edu.ofertAR.service.horario.HorariosPlaceholder;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -32,9 +36,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -60,6 +67,10 @@ public class SepaService {
     @Value("${sepa.cache-dir:${java.io.tmpdir}/sepa-cache}")
     private String cacheDir;
 
+    // Fuente del zip, de mayor a menor precedencia (ver resolvedOverride):
+    // SEPA_RESOURCE_FILE > SEPA_RESOURCE_DIR > SEPA_RESOURCE_URL > CKAN en vivo.
+    // Sin ninguna seteada se usa CKAN, como siempre.
+
     /** Espejo http/https del zip (opcional; esquiva el 403 de la IP). */
     @Value("${sepa.resource-url:}")
     private String resourceUrlOverride;
@@ -68,9 +79,23 @@ public class SepaService {
     @Value("${sepa.resource-file:}")
     private String resourceFileOverride;
 
-    /** Fecha del dataset (YYYY-MM-DD) cuando no se puede extraer del nombre. */
+    /**
+     * Fecha del dataset (YYYY-MM-DD) para SEPA_RESOURCE_FILE y SEPA_RESOURCE_URL.
+     * Con la carpeta vigilada no se usa: cada zip trae la suya, y una fecha fija
+     * haría que el cron diera por cargado cualquier zip nuevo.
+     */
     @Value("${sepa.resource-fecha:}")
     private String resourceFechaOverride;
+
+    /**
+     * Carpeta de la que se toma el zip más reciente (opcional). La llena
+     * {@code tools/sepa-relay} desde una conexión argentina: el sitio oficial
+     * responde 403 a la IP del servidor, así que la descarga la hace otro
+     * equipo y la deja acá. A diferencia de {@code resource-file}, no hay que
+     * tocar ninguna variable cuando llega un dataset nuevo.
+     */
+    @Value("${sepa.resource-dir:}")
+    private String resourceDirOverride;
 
     private final SepaComercioNombres comercioNombres;
 
@@ -172,6 +197,20 @@ public class SepaService {
         return resolveResource(dia);
     }
 
+    /**
+     * true si la fuente activa es la carpeta vigilada (SEPA_RESOURCE_DIR sin
+     * SEPA_RESOURCE_FILE, que le gana). Es el único modo en que el sync
+     * programado se saltea un dataset ya cargado: el cron corre seguido para
+     * tomar el zip apenas lo deja el relay.
+     */
+    public boolean usaCarpetaVigilada() {
+        return isBlank(resourceFileOverride) && !isBlank(resourceDirOverride);
+    }
+
+    private static boolean isBlank(String valor) {
+        return valor == null || valor.isBlank();
+    }
+
     // ── 1. Resolver recurso vía API CKAN ─────────────────────────────
 
     private SepaResource resolveResource(String dia) {
@@ -239,20 +278,47 @@ public class SepaService {
 
     /**
      * Override para esquivar el 403 por IP de datos.produccion.gob.ar: permite
-     * apuntar a un espejo del zip (URL pública o archivo local del contenedor).
-     * Devuelve vacío si no hay override configurado (se sigue usando CKAN).
+     * apuntar a un espejo del zip (archivo local del contenedor, carpeta
+     * vigilada o URL pública). Devuelve vacío si no hay override configurado
+     * (se sigue usando CKAN).
      */
     private Optional<SepaResource> resolvedOverride() {
+        // Precedencia: archivo fijo > carpeta vigilada > espejo http. El
+        // archivo fijo gana porque es lo que alguien pone a mano para forzar
+        // un dataset puntual, aunque la carpeta tenga uno más nuevo.
         String fuente;
+        String fechaDelContenido = null;
         if (resourceFileOverride != null && !resourceFileOverride.isBlank()) {
-            fuente = Path.of(resourceFileOverride).toUri().toString();
+            Path archivo = Path.of(resourceFileOverride);
+            fuente = archivo.toUri().toString();
+            fechaDelContenido = fechaDelZip(archivo);
+        } else if (resourceDirOverride != null && !resourceDirOverride.isBlank()) {
+            // zipMasReciente sólo devuelve zips con fecha legible, y esa fecha
+            // manda: SEPA_RESOURCE_FECHA es para un archivo o URL puntual. Si
+            // valiera acá, todos los zips que deje el relay tendrían la misma
+            // fecha y el cron daría por cargado cualquiera nuevo.
+            ZipEnCarpeta masReciente = zipMasReciente(Path.of(resourceDirOverride));
+            fuente = masReciente.archivo().toUri().toString();
+            if (!isBlank(resourceFechaOverride)) {
+                log.warn("SEPA: SEPA_RESOURCE_FECHA se ignora con SEPA_RESOURCE_DIR; "
+                        + "vale la fecha de cada zip ({})", masReciente.fecha());
+            }
+            log.info("SEPA: recurso de la carpeta vigilada (fecha {}): {}",
+                    masReciente.fecha(), displayUrl(fuente));
+            return Optional.of(new SepaResource(masReciente.fecha(), masReciente.fecha(), fuente));
         } else if (resourceUrlOverride != null && !resourceUrlOverride.isBlank()) {
             fuente = resourceUrlOverride;
         } else {
             return Optional.empty();
         }
 
+        // La fecha de adentro del zip le gana al nombre: "sepa_martes.zip", que
+        // es como lo publica el sitio, no trae fecha, y era lo que obligaba a
+        // cargar SEPA_RESOURCE_FECHA a mano con cada archivo nuevo.
         String fecha = resourceFechaOverride == null ? "" : resourceFechaOverride.trim();
+        if (fecha.isBlank() && fechaDelContenido != null) {
+            fecha = fechaDelContenido;
+        }
         if (fecha.isBlank()) {
             fecha = extractDate(fuente);
         }
@@ -263,6 +329,131 @@ public class SepaService {
 
         log.info("SEPA: recurso por override (fecha {}): {}", fecha, displayUrl(fuente));
         return Optional.of(new SepaResource(fecha, fecha, fuente));
+    }
+
+    /** Un zip SEPA de la carpeta vigilada, con la fecha leída de su contenido. */
+    record ZipEnCarpeta(Path archivo, String fecha) {}
+
+    /** "2026-09-15/...": la carpeta con la que SEPA arma el zip del día. */
+    private static final Pattern CARPETA_CON_FECHA = Pattern.compile("^(\\d{4}-\\d{2}-\\d{2})/");
+
+    /** "sepa_1_comercio-sepa-12_2026-09-15_09-05-10.zip": la fecha de cada zip interno. */
+    private static final Pattern FECHA_ZIP_INTERNO = Pattern.compile("_(\\d{4}-\\d{2}-\\d{2})_");
+
+    /**
+     * La fecha del dataset según el propio zip, o null si no es un zip SEPA o
+     * no la dice sin ambigüedad.
+     *
+     * <p>Sólo lee el índice del zip, no descomprime nada: se llama sobre cada
+     * archivo de la carpeta vigilada en cada pasada del cron. Manda la carpeta
+     * {@code YYYY-MM-DD/} con la que SEPA arma el zip. Si no la hay, vale la
+     * fecha de los zips internos, siempre que sea una sola: los internos llevan
+     * además la hora en que se generaron, y uno generado pasada la medianoche
+     * podría traer el día siguiente. Un zip sin zips internos no es un dataset
+     * SEPA aunque tenga una fecha en algún nombre.
+     */
+    static String fechaDelZip(Path zip) {
+        if (zip == null || !Files.isRegularFile(zip)) {
+            return null;
+        }
+        Set<String> carpetas = new TreeSet<>();
+        Set<String> internos = new TreeSet<>();
+        int zipsInternos = 0;
+        try (ZipFile zf = new ZipFile(zip.toFile())) {
+            Enumeration<? extends ZipEntry> entradas = zf.entries();
+            while (entradas.hasMoreElements()) {
+                String nombre = entradas.nextElement().getName();
+                Matcher carpeta = CARPETA_CON_FECHA.matcher(nombre);
+                if (carpeta.find()) {
+                    carpetas.add(carpeta.group(1));
+                }
+                if (nombre.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+                    zipsInternos++;
+                    Matcher interno = FECHA_ZIP_INTERNO.matcher(nombre.substring(nombre.lastIndexOf('/') + 1));
+                    if (interno.find()) {
+                        internos.add(interno.group(1));
+                    }
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            // Truncado, a medio copiar o directamente no es un zip.
+            return null;
+        }
+        if (zipsInternos == 0) {
+            return null;
+        }
+        String fecha = carpetas.size() == 1 ? carpetas.iterator().next()
+                : carpetas.isEmpty() && internos.size() == 1 ? internos.iterator().next()
+                : null;
+        return fechaValida(fecha) ? fecha : null;
+    }
+
+    private static boolean fechaValida(String fecha) {
+        if (fecha == null) {
+            return false;
+        }
+        try {
+            LocalDate.parse(fecha);
+            return true;
+        } catch (DateTimeParseException e) {
+            return false;
+        }
+    }
+
+    /**
+     * El zip SEPA más reciente de la carpeta, por la fecha de su contenido y no
+     * por la del archivo: una copia vieja subida hoy sigue siendo un dataset
+     * viejo. A igual fecha, el modificado último. Se ignoran los que no
+     * terminan en .zip —el relay sube a un ".part" y renombra al terminar, así
+     * que un archivo a medio subir nunca se lee— y los que no son un dataset
+     * SEPA legible.
+     */
+    static ZipEnCarpeta zipMasReciente(Path carpeta) {
+        if (carpeta == null || !Files.isDirectory(carpeta)) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "SEPA_RESOURCE_DIR no es una carpeta accesible desde el servidor");
+        }
+        List<Path> candidatos;
+        try (Stream<Path> archivos = Files.list(carpeta)) {
+            candidatos = archivos
+                    .filter(Files::isRegularFile)
+                    .filter(p -> {
+                        String nombre = p.getFileName().toString();
+                        return !nombre.startsWith(".") && nombre.toLowerCase(Locale.ROOT).endsWith(".zip");
+                    })
+                    .toList();
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "No se pudo leer SEPA_RESOURCE_DIR: " + e.getMessage(), e);
+        }
+        ZipEnCarpeta mejor = null;
+        long mejorModificado = Long.MIN_VALUE;
+        for (Path zip : candidatos) {
+            String fecha = fechaDelZip(zip);
+            if (fecha == null) {
+                log.warn("SEPA: se ignora {} en SEPA_RESOURCE_DIR: no es un dataset SEPA legible", zip.getFileName());
+                continue;
+            }
+            long modificado = ultimaModificacion(zip);
+            int cmp = mejor == null ? 1 : fecha.compareTo(mejor.fecha());
+            if (cmp > 0 || (cmp == 0 && modificado > mejorModificado)) {
+                mejor = new ZipEnCarpeta(zip, fecha);
+                mejorModificado = modificado;
+            }
+        }
+        if (mejor == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "No hay ningún zip SEPA válido en SEPA_RESOURCE_DIR (¿corrió el relay?)");
+        }
+        return mejor;
+    }
+
+    private static long ultimaModificacion(Path archivo) {
+        try {
+            return Files.getLastModifiedTime(archivo).toMillis();
+        } catch (IOException e) {
+            return Long.MIN_VALUE;
+        }
     }
 
     /** No exponer rutas internas del servidor en respuestas/logs amigables. */
@@ -577,9 +768,12 @@ public class SepaService {
     }
 
     /**
-     * Sucursales de un comercio con su dirección y coordenadas. Descarta las que no
-     * traen coordenadas válidas dentro de Argentina: sin ubicación no se pueden
+     * Sucursales de un comercio con su dirección, coordenadas y horario. Descarta las
+     * que no traen coordenadas válidas dentro de Argentina: sin ubicación no se pueden
      * ofrecer como "cerca", y el dataset trae filas con las columnas corridas.
+     *
+     * <p>El horario se juzga por comercio y no por fila: si TODAS declaran 24 horas
+     * todos los días es relleno y se descarta (ver {@link HorariosPlaceholder}).
      */
     private List<SepaSucursalData> readSucursales(ZipFile zipFile, String comercioId,
                                                   Map<String, String> banderas) throws IOException {
@@ -621,10 +815,25 @@ public class SepaService {
                         get(f, cols, "sucursales_localidad"),
                         get(f, cols, "sucursales_provincia"),
                         lat,
-                        lng));
+                        lng,
+                        HorarioParser.parsearSemana(horarioCeldas(f, cols))));
             }
         }
+        if (HorariosPlaceholder.esRelleno24h(out.stream().map(SepaSucursalData::horarios).toList())) {
+            log.info("SEPA: el comercio {} declara 00:00 a 24:00 en sus {} sucursales todos los días; "
+                    + "se toma como horario no informado", comercioId, out.size());
+            out.replaceAll(s -> s.conHorarios(null));
+        }
         return out;
+    }
+
+    /** Las siete columnas sucursales_<día>_horario_atencion, de lunes a domingo. */
+    private List<String> horarioCeldas(String[] fields, Map<String, Integer> cols) {
+        List<String> celdas = new ArrayList<>(HorarioParser.DIAS.size());
+        for (String dia : HorarioParser.DIAS) {
+            celdas.add(get(fields, cols, "sucursales_" + dia + "_horario_atencion"));
+        }
+        return celdas;
     }
 
     private static Double coordenada(String value, double min, double max) {

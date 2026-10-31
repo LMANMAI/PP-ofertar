@@ -75,6 +75,10 @@ class SepaServiceSucursalesRealZipTest {
         assertTrue(s.latitud() < -21 && s.latitud() > -56 && s.longitud() < -53 && s.longitud() > -74);
         assertNotNull(s.bandera(), "la bandera sale de comercio.csv");
 
+        // COTO informa el horario de casi todas sus sucursales ("8:30 a 22:00", "Cerrado").
+        long conHorario = sucursales.stream().filter(x -> x.horarios() != null).count();
+        assertTrue(conHorario > sucursales.size() * 0.9, "con horario: " + conHorario + "/" + sucursales.size());
+
         // Todo precio de una sucursal con ubicación queda en algún grupo.
         List<Integer> cantidades = new ArrayList<>();
         grupos[0].paraCadaGrupo(g -> cantidades.add(g.cantidad()));
@@ -84,6 +88,26 @@ class SepaServiceSucursalesRealZipTest {
         // Y el agrupado comprime de verdad: del orden de un millón de filas a decenas de miles.
         assertTrue(cantidades.size() < filas.get() / 5,
                 "grupos=" + cantidades.size() + " filas=" + filas.get());
+    }
+
+    @Test
+    @DisplayName("Estación Lima declara 24 h en todo: relleno, sin horario. Axion varía: se le cree")
+    void placeholder24h() {
+        Path zip = zipPath();
+        Assumptions.assumeTrue(Files.isRegularFile(zip), "zip SEPA de prueba no presente: " + zip);
+
+        List<SepaComercioSucursales> lima = new ArrayList<>();
+        newSepa(zip).scan(null, "4", null, "no-existe", p -> { }, lima::add);
+        List<SepaComercioSucursales> axion = new ArrayList<>();
+        newSepa(zip).scan(null, "23", null, "no-existe", p -> { }, axion::add);
+
+        assertEquals(1, lima.size());
+        assertFalse(lima.get(0).sucursales().isEmpty());
+        assertTrue(lima.get(0).sucursales().stream().allMatch(x -> x.horarios() == null));
+
+        assertEquals(1, axion.size());
+        assertTrue(axion.get(0).sucursales().stream().anyMatch(x -> x.horarios() != null
+                && x.horarios().esTodoElDiaTodaLaSemana()), "Axion conserva sus 24 h");
     }
 
     @Test

@@ -5,6 +5,8 @@ import ar.edu.ofertAR.model.SepaPrecioGrupo;
 import ar.edu.ofertAR.model.SepaSucursal;
 import ar.edu.ofertAR.repository.SepaPrecioGrupoRepository;
 import ar.edu.ofertAR.repository.SepaSucursalRepository;
+import ar.edu.ofertAR.service.horario.HorarioParser;
+import ar.edu.ofertAR.service.horario.HorariosJson;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -20,6 +23,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyDouble;
@@ -119,6 +123,21 @@ class SepaSucursalPreciosServiceTest {
                 .sorted(Comparator.comparing(SepaPrecioGrupo::getPrecio)).toList());
 
         assertEquals(List.of("DIA", "COTO"), r.stream().map(SucursalPrecioResponse::bandera).toList());
+    }
+
+    @Test
+    @DisplayName("cada sucursal sale con su horario guardado, o null si SEPA no lo informa")
+    void sucursalConHorario() {
+        var horario = HorarioParser.parsearSemana(Collections.nCopies(7, "8:30 a 22:00"));
+        SepaSucursal coto = suc(1, "12", "COTO", "1", -34.6100, -58.3700);
+        coto.setHorarios(HorariosJson.escribir(horario));
+        SepaSucursal dia = suc(2, "15", "DIA", "1", -34.6120, -58.3720);
+        var grupos = List.of(grupo("15", "4800", "2"), grupo("12", "5600", "1"));
+
+        List<SucursalPrecioResponse> r = SepaSucursalPreciosService.elegir(cercanas(coto, dia), grupos);
+
+        assertNull(r.get(0).horarios(), "DIA sin horario");
+        assertEquals(horario, r.get(1).horarios());
     }
 
     @Test

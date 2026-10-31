@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface SepaSucursalRepository extends JpaRepository<SepaSucursal, Long> {
@@ -14,4 +15,11 @@ public interface SepaSucursalRepository extends JpaRepository<SepaSucursal, Long
             + "and s.longitud between :minLng and :maxLng")
     List<SepaSucursal> findInBox(@Param("minLat") double minLat, @Param("maxLat") double maxLat,
                                  @Param("minLng") double minLng, @Param("maxLng") double maxLng);
+
+    /** Como {@link #findInBox}, pero solo de algunos comercios: la caja de un mapa entero es grande. */
+    @Query("select s from SepaSucursal s where s.latitud between :minLat and :maxLat "
+            + "and s.longitud between :minLng and :maxLng and s.comercioId in :comercios")
+    List<SepaSucursal> findInBoxDeComercios(@Param("minLat") double minLat, @Param("maxLat") double maxLat,
+                                            @Param("minLng") double minLng, @Param("maxLng") double maxLng,
+                                            @Param("comercios") Collection<String> comercios);
 }

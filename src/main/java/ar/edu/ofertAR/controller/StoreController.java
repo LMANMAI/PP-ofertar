@@ -4,6 +4,7 @@ import ar.edu.ofertAR.dto.request.UpdateFavoriteStoresRequest;
 import ar.edu.ofertAR.dto.response.FavoriteStoresResponse;
 import ar.edu.ofertAR.model.User;
 import ar.edu.ofertAR.service.FavoriteStoreService;
+import ar.edu.ofertAR.service.TiendaHorariosService;
 import ar.edu.ofertAR.service.offer.StoreLocatorClient;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ public class StoreController {
 
     private final FavoriteStoreService favoriteStoreService;
     private final StoreLocatorClient storeLocatorClient;
+    private final TiendaHorariosService tiendaHorariosService;
 
     /** Chains the user can choose from. */
     @GetMapping("/chains")
@@ -32,6 +34,9 @@ public class StoreController {
      * Branches near a coordinate. Defaults to the user's saved radius, and
      * returns every chain (not just favourites) so the picker can show what's
      * available to choose from.
+     *
+     * <p>Cada tienda lleva {@code horarios} cuando se la pudo cruzar con una sucursal
+     * SEPA de su cadena (ver {@link TiendaHorariosService}); si no, el campo no está.
      */
     @GetMapping("/nearby")
     public ResponseEntity<List<Map<String, Object>>> getNearby(
@@ -49,7 +54,8 @@ public class StoreController {
         List<String> chains = Boolean.TRUE.equals(onlyFavorites)
                 ? favoriteStoreService.getFavoriteChainSlugs(user)
                 : List.of();
-        return ResponseEntity.ok(storeLocatorClient.findNearbyStores(lat, lng, radius, chains));
+        return ResponseEntity.ok(tiendaHorariosService.conHorarios(
+                storeLocatorClient.findNearbyStores(lat, lng, radius, chains)));
     }
 
     @GetMapping("/favorites")

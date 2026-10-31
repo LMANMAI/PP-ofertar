@@ -302,6 +302,73 @@
         },
         "type" : "object"
       },
+      "FranjaHorariaResponse" : {
+        "properties" : {
+          "desde" : {
+            "type" : "string"
+          },
+          "hasta" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "desde", "hasta" ],
+        "type" : "object"
+      },
+      "HorariosResponse" : {
+        "properties" : {
+          "domingo" : {
+            "items" : {
+              "$ref" : "#/components/schemas/FranjaHorariaResponse"
+            },
+            "nullable" : true,
+            "type" : "array"
+          },
+          "jueves" : {
+            "items" : {
+              "$ref" : "#/components/schemas/FranjaHorariaResponse"
+            },
+            "nullable" : true,
+            "type" : "array"
+          },
+          "lunes" : {
+            "items" : {
+              "$ref" : "#/components/schemas/FranjaHorariaResponse"
+            },
+            "nullable" : true,
+            "type" : "array"
+          },
+          "martes" : {
+            "items" : {
+              "$ref" : "#/components/schemas/FranjaHorariaResponse"
+            },
+            "nullable" : true,
+            "type" : "array"
+          },
+          "miercoles" : {
+            "items" : {
+              "$ref" : "#/components/schemas/FranjaHorariaResponse"
+            },
+            "nullable" : true,
+            "type" : "array"
+          },
+          "sabado" : {
+            "items" : {
+              "$ref" : "#/components/schemas/FranjaHorariaResponse"
+            },
+            "nullable" : true,
+            "type" : "array"
+          },
+          "viernes" : {
+            "items" : {
+              "$ref" : "#/components/schemas/FranjaHorariaResponse"
+            },
+            "nullable" : true,
+            "type" : "array"
+          }
+        },
+        "required" : [ "domingo", "jueves", "lunes", "martes", "miercoles", "sabado", "viernes" ],
+        "type" : "object"
+      },
       "LoginRequest" : {
         "properties" : {
           "email" : {
@@ -1113,6 +1180,12 @@
             "format" : "double",
             "type" : "number"
           },
+          "horarios" : {
+            "allOf" : [ {
+              "$ref" : "#/components/schemas/HorariosResponse"
+            } ],
+            "nullable" : true
+          },
           "latitud" : {
             "format" : "double",
             "type" : "number"
@@ -1145,7 +1218,7 @@
             "type" : "string"
           }
         },
-        "required" : [ "bandera", "banderaId", "comercioId", "direccion", "distanciaKm", "latitud", "localidad", "longitud", "nombre", "precio", "provincia", "sucursalId", "tipo" ],
+        "required" : [ "bandera", "banderaId", "comercioId", "direccion", "distanciaKm", "horarios", "latitud", "localidad", "longitud", "nombre", "precio", "provincia", "sucursalId", "tipo" ],
         "type" : "object"
       },
       "Summary" : {
