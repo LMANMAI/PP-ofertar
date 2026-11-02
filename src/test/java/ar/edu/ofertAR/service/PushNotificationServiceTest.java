@@ -233,6 +233,159 @@ class PushNotificationServiceTest {
     }
 
     @Nested
+    @DisplayName("payload y resultado por dispositivo")
+    class PayloadAndResults {
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private ArgumentCaptor<Object> stubExpo(Map<String, Object> expoResponse) {
+            ArgumentCaptor<Object> body = ArgumentCaptor.forClass(Object.class);
+            when(restClient.post()).thenReturn(restClientUriSpec);
+            when(restClientUriSpec.uri(EXPO_PUSH_URL)).thenReturn(restClientBodySpec);
+            when(restClientBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(restClientBodySpec);
+            when(restClientBodySpec.body(body.capture())).thenReturn(restClientBodySpec);
+            when(restClientBodySpec.retrieve()).thenReturn(restClientResponseSpec);
+            when(restClientResponseSpec.body(Map.class)).thenReturn(expoResponse);
+            return body;
+        }
+
+        @Test
+        @DisplayName("el mensaje que sale para Expo va con prioridad high y el data intacto")
+        @SuppressWarnings("unchecked")
+        void sentMessage_hasHighPriority() {
+            User u = user(1L);
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of(
+                    PushToken.builder().user(u).token("T1").platform("android").build()));
+            ArgumentCaptor<Object> body = stubExpo(Map.of("data", List.of(Map.of("status", "ok"))));
+
+            service.sendToUser(u, "Titulo", "Cuerpo", Map.of("screen", "offers"));
+
+            List<Map<String, Object>> messages = (List<Map<String, Object>>) body.getValue();
+            assertEquals(1, messages.size());
+            assertEquals("high", messages.get(0).get("priority"));
+            assertEquals(List.of("T1"), messages.get(0).get("to"));
+            assertEquals(Map.of("screen", "offers"), messages.get(0).get("data"));
+            assertFalse(messages.get(0).containsKey("channelId"), "la app no crea canales propios");
+        }
+
+        @Test
+        @DisplayName("sendToUserNow devuelve el ticket de cada dispositivo y sigue limpiando los tokens muertos")
+        void sendNow_returnsTicketsAndCleansDeadTokens() {
+            User u = user(1L);
+            PushToken good = PushToken.builder().user(u).token("GOOD").platform("android").build();
+            PushToken dead = PushToken.builder().user(u).token("DEAD").platform("ios").build();
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of(good, dead));
+            stubExpo(Map.of("data", List.of(
+                    Map.of("status", "ok", "id", "r1"),
+                    Map.of("status", "error", "message", "not registered",
+                            "details", Map.of("error", "DeviceNotRegistered")))));
+
+            List<PushNotificationService.DeliveryResult> results = service.sendToUserNow(u, "T", "B", Map.of());
+
+            assertEquals(2, results.size());
+            assertTrue(results.get(0).ok());
+            assertSame(good, results.get(0).device());
+            assertFalse(results.get(1).ok());
+            assertEquals("DeviceNotRegistered", results.get(1).error());
+            assertEquals("not registered", results.get(1).message());
+            verify(pushTokenRepository).deleteByToken("DEAD");
+            verify(pushTokenRepository, never()).deleteByToken("GOOD");
+        }
+
+        @Test
+        @DisplayName("sendToUserNow sin dispositivos: lista vacía, sin llamar a Expo")
+        void sendNow_noTokens() {
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of());
+
+            assertTrue(service.sendToUserNow(user(1L), "T", "B", Map.of()).isEmpty());
+            verifyNoInteractions(restClient);
+        }
+
+        @Test
+        @DisplayName("sendToUserNow con Expo caído: error por dispositivo, no excepción")
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        void sendNow_expoDown_isErrorPerDevice() {
+            User u = user(1L);
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of(
+                    PushToken.builder().user(u).token("T1").platform("android").build()));
+            stubExpoResponse(Map.of());
+            when(restClientResponseSpec.body(Map.class)).thenThrow(new IllegalStateException("timeout"));
+
+            List<PushNotificationService.DeliveryResult> results = service.sendToUserNow(u, "T", "B", Map.of());
+
+            assertEquals(1, results.size());
+            assertFalse(results.get(0).ok());
+            verify(pushTokenRepository, never()).deleteByToken(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("reactivacion para un solo usuario")
+    class ReactivationForUser {
+
+        @SuppressWarnings("unchecked")
+        private void makeExecuteRunItsCallback() {
+            when(transactionTemplate.execute(any())).thenAnswer(invocation ->
+                    invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class)
+                            .doInTransaction(null));
+        }
+
+        @Test
+        @DisplayName("nunca escaneó: no se le manda y se explica")
+        void neverScanned_isSkipped() {
+            when(ticketRepository.findLastTicketCreatedAtByUserId(1L)).thenReturn(null);
+
+            PushJobOutcome outcome = service.runReactivationForUser(1L);
+
+            assertFalse(outcome.sent());
+            assertTrue(outcome.reason().contains("nunca escaneó"), outcome.reason());
+            verifyNoInteractions(userRepository);
+        }
+
+        @Test
+        @DisplayName("escaneó hace poco: no está inactivo")
+        void recentScan_isSkipped() {
+            when(ticketRepository.findLastTicketCreatedAtByUserId(1L)).thenReturn(LocalDateTime.now().minusDays(2));
+
+            PushJobOutcome outcome = service.runReactivationForUser(1L);
+
+            assertFalse(outcome.sent());
+            verifyNoInteractions(userRepository);
+        }
+
+        @Test
+        @DisplayName("inactivo y fuera de cooldown: misma evaluación que el job, se manda y queda marcado")
+        void dormant_getsNudged() {
+            makeExecuteRunItsCallback();
+            User u = user(1L);
+            when(ticketRepository.findLastTicketCreatedAtByUserId(1L)).thenReturn(LocalDateTime.now().minusDays(20));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(u));
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of());
+
+            PushJobOutcome outcome = service.runReactivationForUser(1L);
+
+            assertTrue(outcome.sent());
+            assertNotNull(u.getLastReactivationNudgeAt());
+            verify(userRepository).save(u);
+        }
+
+        @Test
+        @DisplayName("inactivo pero dentro del cooldown: lo dice y no lo vuelve a marcar")
+        void dormant_inCooldown_isSkipped() {
+            makeExecuteRunItsCallback();
+            User u = user(1L);
+            u.setLastReactivationNudgeAt(LocalDateTime.now().minusDays(3));
+            when(ticketRepository.findLastTicketCreatedAtByUserId(1L)).thenReturn(LocalDateTime.now().minusDays(20));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(u));
+
+            PushJobOutcome outcome = service.runReactivationForUser(1L);
+
+            assertFalse(outcome.sent());
+            assertTrue(outcome.reason().contains("menos de 30 días"), outcome.reason());
+            verify(userRepository, never()).save(any());
+        }
+    }
+
+    @Nested
     @DisplayName("job de reactivacion")
     class ReactivationJob {
 

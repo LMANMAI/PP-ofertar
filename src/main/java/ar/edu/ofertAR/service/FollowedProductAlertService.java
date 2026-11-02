@@ -57,19 +57,33 @@ public class FollowedProductAlertService {
         }
     }
 
-    private void checkUser(Long userId) {
+    /**
+     * El job para un solo usuario, ahora (lo dispara un ADMIN desde
+     * {@code POST /admin/push/jobs/followed}). Es la misma evaluación que hace
+     * el job programado con cada usuario: registra los cambios de promo y
+     * respeta el cooldown, así que lo que avisa acá no se vuelve a avisar
+     * mañana.
+     */
+    public PushJobOutcome runForUser(Long userId) {
+        return checkUser(userId);
+    }
+
+    private PushJobOutcome checkUser(Long userId) {
         User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            return PushJobOutcome.skipped("El usuario no existe.");
+        }
         // Same switch as the offers digest: this is an offer notification.
         // Skipped before asking the offers service, and nothing is recorded,
         // so a promotion already running is announced the day they turn the
         // notifications back on.
-        if (user == null || !user.isOffersPushEnabled()) {
-            return;
+        if (!user.isOffersPushEnabled()) {
+            return PushJobOutcome.skipped("El usuario tiene apagadas las alertas de ofertas.");
         }
 
         List<FollowedProduct> followed = followedProductRepository.findByUserIdOrderByCreatedAtDescIdDesc(userId);
         if (followed.isEmpty()) {
-            return;
+            return PushJobOutcome.skipped("El usuario no sigue ningún producto.");
         }
 
         Optional<List<OfferMatch>> answer = followedProductService.matchPromos(user, followed);
@@ -78,13 +92,14 @@ public class FollowedProductAlertService {
             // untouched is what keeps tomorrow's run from announcing as new a
             // promotion that was already running today.
             log.warn("Sin respuesta del servicio de ofertas para los productos seguidos del usuario {}", userId);
-            return;
+            return PushJobOutcome.skipped("El servicio de ofertas no respondió: no se cambió nada.");
         }
         List<OfferMatch> matches = answer.get();
 
         LocalDateTime now = LocalDateTime.now();
         List<FollowedProduct> changed = new ArrayList<>();
         List<PushNotificationService.FollowedPromo> toAnnounce = new ArrayList<>();
+        int inCooldown = 0;
 
         // A shorter answer than the question leaves the tail unknown, and it
         // is treated like the outage above: untouched.
@@ -103,6 +118,8 @@ public class FollowedProductAlertService {
                 toAnnounce.add(new PushNotificationService.FollowedPromo(
                         product.getDescription(),
                         FollowedProductService.promoRetailer(product.getDescription(), match)));
+            } else if (inPromo) {
+                inCooldown++;
             }
         }
 
@@ -111,7 +128,16 @@ public class FollowedProductAlertService {
         }
         if (!toAnnounce.isEmpty()) {
             pushNotificationService.notifyFollowedProductsInPromo(user, toAnnounce);
+            return PushJobOutcome.sent(toAnnounce.size() == 1
+                    ? "Se avisó de 1 producto seguido que entró en promo."
+                    : "Se avisó de " + toAnnounce.size() + " productos seguidos que entraron en promo.");
         }
+        if (inCooldown > 0) {
+            return PushJobOutcome.skipped(inCooldown + " producto(s) volvieron a entrar en promo, pero ya se avisaron hace menos de "
+                    + RENOTIFY_COOLDOWN_DAYS + " días.");
+        }
+        return PushJobOutcome.skipped("Ninguno de sus " + followed.size()
+                + " productos seguidos entró en promo desde el último chequeo (los que ya estaban en promo no se vuelven a avisar).");
     }
 
     private static boolean cooledDown(FollowedProduct product, LocalDateTime now) {

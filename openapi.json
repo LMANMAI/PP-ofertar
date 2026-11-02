@@ -40,6 +40,58 @@
         "required" : [ "token", "user" ],
         "type" : "object"
       },
+      "BankPromotionsTodayResponse" : {
+        "properties" : {
+          "bestPercent" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "date" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "promos" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PromoView"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [ "bestPercent", "date", "promos" ],
+        "type" : "object"
+      },
+      "BankPromotionsWeekResponse" : {
+        "properties" : {
+          "days" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PromoDay"
+            },
+            "type" : "array"
+          },
+          "from" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "hasPaymentMethods" : {
+            "type" : "boolean"
+          },
+          "mine" : {
+            "type" : "boolean"
+          },
+          "notes" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PromoNote"
+            },
+            "type" : "array"
+          },
+          "to" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        },
+        "required" : [ "days", "from", "hasPaymentMethods", "mine", "notes", "to" ],
+        "type" : "object"
+      },
       "BestOffer" : {
         "properties" : {
           "discountPct" : {
@@ -129,6 +181,33 @@
           }
         },
         "required" : [ "activeTo", "discountPercentages", "imageUrl", "legalText", "mechanic", "offerId", "percentagesUnverified", "province", "retailerName" ],
+        "type" : "object"
+      },
+      "CatalogBenefit" : {
+        "properties" : {
+          "description" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "slug" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "description", "name", "slug" ],
+        "type" : "object"
+      },
+      "CatalogOption" : {
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "slug" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "name", "slug" ],
         "type" : "object"
       },
       "CategorySavings" : {
@@ -382,6 +461,24 @@
         },
         "type" : "object"
       },
+      "MyPaymentMethodsResponse" : {
+        "properties" : {
+          "benefits" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "methods" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PaymentMethodView"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [ "benefits", "methods" ],
+        "type" : "object"
+      },
       "Offer" : {
         "properties" : {
           "activeTo" : {
@@ -566,6 +663,105 @@
         },
         "type" : "object"
       },
+      "PaymentCatalogResponse" : {
+        "properties" : {
+          "benefits" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CatalogBenefit"
+            },
+            "type" : "array"
+          },
+          "cardTypes" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CatalogOption"
+            },
+            "type" : "array"
+          },
+          "issuers" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PaymentIssuerView"
+            },
+            "type" : "array"
+          },
+          "networks" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CatalogOption"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [ "benefits", "cardTypes", "issuers", "networks" ],
+        "type" : "object"
+      },
+      "PaymentIssuerView" : {
+        "properties" : {
+          "kind" : {
+            "enum" : [ "bank", "wallet", "card_issuer", "club" ],
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "slug" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "kind", "name", "slug" ],
+        "type" : "object"
+      },
+      "PaymentMethodInput" : {
+        "properties" : {
+          "cardType" : {
+            "maxLength" : 20,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "issuerSlug" : {
+            "maxLength" : 60,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "network" : {
+            "maxLength" : 20,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PaymentMethodView" : {
+        "properties" : {
+          "cardType" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "issuer" : {
+            "$ref" : "#/components/schemas/PaymentIssuerView"
+          },
+          "network" : {
+            "nullable" : true,
+            "type" : "string"
+          }
+        },
+        "required" : [ "cardType", "id", "issuer", "network" ],
+        "type" : "object"
+      },
+      "PercentRange" : {
+        "properties" : {
+          "max" : {
+            "type" : "number"
+          },
+          "min" : {
+            "type" : "number"
+          }
+        },
+        "required" : [ "max", "min" ],
+        "type" : "object"
+      },
       "PointsBalanceResponse" : {
         "properties" : {
           "balance" : {
@@ -629,6 +825,82 @@
         "required" : [ "barcode", "category", "description", "purchaseCount", "totalDiscounts" ],
         "type" : "object"
       },
+      "PromoCap" : {
+        "properties" : {
+          "amount" : {
+            "type" : "number"
+          },
+          "period" : {
+            "enum" : [ "purchase", "day", "week", "month" ],
+            "nullable" : true,
+            "type" : "string"
+          }
+        },
+        "required" : [ "amount", "period" ],
+        "type" : "object"
+      },
+      "PromoDay" : {
+        "properties" : {
+          "bestPercent" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "date" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "promos" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PromoView"
+            },
+            "type" : "array"
+          },
+          "weekday" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "bestPercent", "date", "promos", "weekday" ],
+        "type" : "object"
+      },
+      "PromoDiscount" : {
+        "properties" : {
+          "amount" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "installments" : {
+            "format" : "int32",
+            "nullable" : true,
+            "type" : "integer"
+          },
+          "kind" : {
+            "enum" : [ "percent", "installments", "amount", "other" ],
+            "type" : "string"
+          },
+          "percent" : {
+            "nullable" : true,
+            "type" : "number"
+          },
+          "text" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "kind", "text" ],
+        "type" : "object"
+      },
+      "PromoIssuer" : {
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "slug" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "name", "slug" ],
+        "type" : "object"
+      },
       "PromoMechanic" : {
         "properties" : {
           "imageUrl" : {
@@ -667,6 +939,267 @@
           }
         },
         "required" : [ "imageUrl", "listPrice", "productName", "promoLabels", "promoUnitPrice", "requiredQuantity", "retailerName", "unitPrice" ],
+        "type" : "object"
+      },
+      "PromoNote" : {
+        "properties" : {
+          "fromDate" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "kind" : {
+            "enum" : [ "rollover" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "fromDate", "kind" ],
+        "type" : "object"
+      },
+      "PromoRequires" : {
+        "properties" : {
+          "cardType" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "network" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "package" : {
+            "nullable" : true,
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PromoView" : {
+        "properties" : {
+          "allMethods" : {
+            "type" : "boolean"
+          },
+          "cap" : {
+            "allOf" : [ {
+              "$ref" : "#/components/schemas/PromoCap"
+            } ],
+            "nullable" : true
+          },
+          "channels" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "conditions" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "discount" : {
+            "$ref" : "#/components/schemas/PromoDiscount"
+          },
+          "formats" : {
+            "items" : {
+              "type" : "string"
+            },
+            "nullable" : true,
+            "type" : "array"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "issuers" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PromoIssuer"
+            },
+            "type" : "array"
+          },
+          "legalText" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "match" : {
+            "enum" : [ "match", "near", "all", "none" ],
+            "type" : "string"
+          },
+          "matchReason" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "percentRange" : {
+            "allOf" : [ {
+              "$ref" : "#/components/schemas/PercentRange"
+            } ],
+            "nullable" : true
+          },
+          "qualityFlags" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "regions" : {
+            "items" : {
+              "type" : "string"
+            },
+            "nullable" : true,
+            "type" : "array"
+          },
+          "requires" : {
+            "allOf" : [ {
+              "$ref" : "#/components/schemas/PromoRequires"
+            } ],
+            "nullable" : true
+          },
+          "retailer" : {
+            "type" : "string"
+          },
+          "retailerName" : {
+            "type" : "string"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "validFrom" : {
+            "format" : "date",
+            "type" : "string"
+          },
+          "validTo" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        },
+        "required" : [ "allMethods", "cap", "channels", "conditions", "discount", "formats", "id", "issuers", "legalText", "match", "matchReason", "percentRange", "qualityFlags", "regions", "requires", "retailer", "retailerName", "title", "validFrom", "validTo" ],
+        "type" : "object"
+      },
+      "PushDeliveryResponse" : {
+        "properties" : {
+          "error" : {
+            "description" : "Código de error de Expo, p. ej. DeviceNotRegistered (el token se borra).",
+            "nullable" : true,
+            "type" : "string"
+          },
+          "message" : {
+            "nullable" : true,
+            "type" : "string"
+          },
+          "platform" : {
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "ok", "error" ],
+            "type" : "string"
+          },
+          "tokenSuffix" : {
+            "description" : "Últimos caracteres del token, para reconocer el dispositivo sin exponer el token.",
+            "type" : "string"
+          }
+        },
+        "required" : [ "error", "message", "platform", "status", "tokenSuffix" ],
+        "type" : "object"
+      },
+      "PushDeviceResponse" : {
+        "properties" : {
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "lastSeenAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "platform" : {
+            "type" : "string"
+          },
+          "tokenSuffix" : {
+            "description" : "Últimos caracteres del token, para reconocer el dispositivo sin exponer el token.",
+            "type" : "string"
+          }
+        },
+        "required" : [ "createdAt", "lastSeenAt", "platform", "tokenSuffix" ],
+        "type" : "object"
+      },
+      "PushJobRunResponse" : {
+        "properties" : {
+          "deviceCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "job" : {
+            "enum" : [ "followed", "offers", "reactivation" ],
+            "type" : "string"
+          },
+          "reason" : {
+            "type" : "string"
+          },
+          "sent" : {
+            "type" : "boolean"
+          },
+          "userId" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "deviceCount", "job", "reason", "sent", "userId" ],
+        "type" : "object"
+      },
+      "PushStatusResponse" : {
+        "properties" : {
+          "deviceCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "devices" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PushDeviceResponse"
+            },
+            "type" : "array"
+          },
+          "lastReactivationNudgeAt" : {
+            "description" : "Último recordatorio del job de reactivación; null si nunca se le mandó.",
+            "format" : "date-time",
+            "nullable" : true,
+            "type" : "string"
+          },
+          "offersPushEnabled" : {
+            "description" : "Preferencia de alertas de ofertas: habilita los avisos de ofertas, productos seguidos y reactivación. Los de tickets y referidos salen siempre.",
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "deviceCount", "devices", "lastReactivationNudgeAt", "offersPushEnabled" ],
+        "type" : "object"
+      },
+      "PushTestRequest" : {
+        "properties" : {
+          "type" : {
+            "description" : "Qué aviso simular. Lleva el mismo data que el aviso real, así al tocarlo abre la misma pantalla.",
+            "enum" : [ "test", "followedProducts", "offers", "reactivation" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PushTestResponse" : {
+        "properties" : {
+          "devices" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PushDeliveryResponse"
+            },
+            "type" : "array"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "sent" : {
+            "type" : "boolean"
+          },
+          "type" : {
+            "enum" : [ "test", "followedProducts", "offers", "reactivation" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "devices", "message", "sent", "type" ],
         "type" : "object"
       },
       "RecurringProductResponse" : {
@@ -1391,6 +1924,29 @@
         },
         "type" : "object"
       },
+      "UpdatePaymentMethodsRequest" : {
+        "properties" : {
+          "benefits" : {
+            "items" : {
+              "minLength" : 1,
+              "type" : "string"
+            },
+            "maxItems" : 20,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "methods" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PaymentMethodInput"
+            },
+            "maxItems" : 20,
+            "minItems" : 0,
+            "type" : "array"
+          }
+        },
+        "required" : [ "benefits", "methods" ],
+        "type" : "object"
+      },
       "UpdateProfileRequest" : {
         "properties" : {
           "address" : {
@@ -1505,6 +2061,41 @@
   },
   "openapi" : "3.0.1",
   "paths" : {
+    "/admin/push/jobs/{job}" : {
+      "post" : {
+        "operationId" : "runJob",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "job",
+          "required" : true,
+          "schema" : {
+            "enum" : [ "followed", "offers", "reactivation" ],
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PushJobRunResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "admin-push-controller" ]
+      }
+    },
     "/auth/forgot-password" : {
       "post" : {
         "operationId" : "forgotPassword",
@@ -1624,6 +2215,159 @@
         "tags" : [ "auth-controller" ]
       }
     },
+    "/bank-promotions/today" : {
+      "get" : {
+        "operationId" : "today",
+        "parameters" : [ {
+          "description" : "true: sólo las que le sirven al usuario (match, all, near)",
+          "in" : "query",
+          "name" : "mine",
+          "required" : false,
+          "schema" : {
+            "default" : true,
+            "type" : "boolean"
+          }
+        }, {
+          "description" : "Zona del usuario: una o varias provincias separadas por coma, por nombre (\"Córdoba\"), forma canónica (\"CORDOBA\") o código ISO 3166-2 (\"AR-X\" o \"X\"); \"AMBA\" o \"GBA\" es CABA + Buenos Aires. Sin zona, las promos regionales nunca dan match. Una provincia que no se reconoce es 400.",
+          "in" : "query",
+          "name" : "province",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/BankPromotionsTodayResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Las promos de hoy, para la tira de Home (máximo 3)",
+        "tags" : [ "Promos bancarias" ]
+      }
+    },
+    "/bank-promotions/week" : {
+      "get" : {
+        "description" : "Con mine=true no vienen las promos que no le sirven al usuario (match=none).",
+        "operationId" : "week",
+        "parameters" : [ {
+          "description" : "Primer día (YYYY-MM-DD). Por defecto, hoy en Argentina",
+          "in" : "query",
+          "name" : "from",
+          "required" : false,
+          "schema" : {
+            "format" : "date",
+            "type" : "string"
+          }
+        }, {
+          "description" : "true: sólo las que le sirven al usuario (match, all, near)",
+          "in" : "query",
+          "name" : "mine",
+          "required" : false,
+          "schema" : {
+            "default" : true,
+            "type" : "boolean"
+          }
+        }, {
+          "description" : "Zona del usuario: una o varias provincias separadas por coma, por nombre (\"Córdoba\"), forma canónica (\"CORDOBA\") o código ISO 3166-2 (\"AR-X\" o \"X\"); \"AMBA\" o \"GBA\" es CABA + Buenos Aires. Sin zona, las promos regionales nunca dan match. Una provincia que no se reconoce es 400.",
+          "in" : "query",
+          "name" : "province",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/BankPromotionsWeekResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Siete días de promos bancarias desde from",
+        "tags" : [ "Promos bancarias" ]
+      }
+    },
+    "/me/payment-methods" : {
+      "get" : {
+        "operationId" : "get",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MyPaymentMethodsResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Los medios de pago y beneficios del usuario",
+        "tags" : [ "Mis tarjetas" ]
+      },
+      "put" : {
+        "description" : "Valida cada slug contra el catálogo: uno desconocido es 400 y no se guarda nada.",
+        "operationId" : "replace",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdatePaymentMethodsRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MyPaymentMethodsResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Reemplaza el conjunto completo de medios y beneficios",
+        "tags" : [ "Mis tarjetas" ]
+      }
+    },
+    "/me/payment-methods/{id}" : {
+      "delete" : {
+        "description" : "204; 404 si no existe o es de otro usuario.",
+        "operationId" : "delete_1",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "summary" : "Quita un medio de pago",
+        "tags" : [ "Mis tarjetas" ]
+      }
+    },
     "/offers" : {
       "get" : {
         "operationId" : "listOffers",
@@ -1680,6 +2424,25 @@
           }
         },
         "tags" : [ "offer-controller" ]
+      }
+    },
+    "/payment-methods/catalog" : {
+      "get" : {
+        "operationId" : "catalog",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PaymentCatalogResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Catálogo: emisores (del scraper), redes, tipos y beneficios",
+        "tags" : [ "Mis tarjetas" ]
       }
     },
     "/points/history" : {
@@ -1871,6 +2634,51 @@
         },
         "responses" : {
           "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "push-controller" ]
+      }
+    },
+    "/push/status" : {
+      "get" : {
+        "operationId" : "status",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PushStatusResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "push-controller" ]
+      }
+    },
+    "/push/test" : {
+      "post" : {
+        "operationId" : "test",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PushTestRequest"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PushTestResponse"
+                }
+              }
+            },
             "description" : "OK"
           }
         },
@@ -2505,7 +3313,13 @@
     }
   },
   "tags" : [ {
+    "description" : "Medios de pago y beneficios declarados, sin números de tarjeta",
+    "name" : "Mis tarjetas"
+  }, {
     "description" : "Precios minoristas SEPA (datos.produccion.gob.ar)",
     "name" : "SEPA"
+  }, {
+    "description" : "Calendario semanal y tira de Home",
+    "name" : "Promos bancarias"
   } ]
 }

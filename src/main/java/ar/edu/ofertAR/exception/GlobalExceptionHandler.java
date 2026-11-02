@@ -138,7 +138,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
     public ResponseEntity<ApiErrorResponse> handleResponseStatus(
             org.springframework.web.server.ResponseStatusException ex) {
-        return ResponseEntity.status(ex.getStatusCode()).body(
+        // Los headers de la excepción (p. ej. Retry-After en un 429) van en la respuesta.
+        return ResponseEntity.status(ex.getStatusCode()).headers(ex.getHeaders()).body(
                 ApiErrorResponse.builder()
                         .status(ex.getStatusCode().value())
                         .message(ex.getReason())

@@ -161,4 +161,70 @@ class OfferAlertServiceTest {
             assertEquals("catalog:jumbo:1", notifyCaptor.getValue().getId(), "40% le gana a 15%");
         }
     }
+    @Nested
+    @DisplayName("corrida manual para un usuario")
+    class RunForUser {
+
+        @Test
+        @DisplayName("avisa la mejor oferta nueva de sus cadenas, sin marcarla como vista para el resto")
+        void sendsBestNewOffer_withoutMarkingSeen() {
+            User u = user(1L, true);
+            when(favoriteStoreChainRepository.findByUserId(1L))
+                    .thenReturn(List.of(favorite(u, "coto"), favorite(u, "jumbo")));
+            when(offerFeedClient.listOffers(List.of("coto"), 1, 50, null, List.of()))
+                    .thenReturn(feedOf(offer("catalog:coto:1", "Yerba", 15)));
+            when(offerFeedClient.listOffers(List.of("jumbo"), 1, 50, null, List.of()))
+                    .thenReturn(feedOf(offer("catalog:jumbo:1", "Fideos", 40)));
+            when(seenChainOfferRepository.findByChainSlugAndOfferIdIn(anyString(), any())).thenReturn(List.of());
+
+            PushJobOutcome outcome = service.runForUser(u);
+
+            assertTrue(outcome.sent());
+            ArgumentCaptor<OfferFeedResponse.Offer> notifyCaptor = ArgumentCaptor.forClass(OfferFeedResponse.Offer.class);
+            verify(pushNotificationService).notifyNewOffer(eq(u), notifyCaptor.capture());
+            assertEquals("catalog:jumbo:1", notifyCaptor.getValue().getId());
+            verify(seenChainOfferRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("sin cadenas favoritas: no manda y lo dice")
+        void noFavorites_explains() {
+            when(favoriteStoreChainRepository.findByUserId(1L)).thenReturn(List.of());
+
+            PushJobOutcome outcome = service.runForUser(user(1L, true));
+
+            assertFalse(outcome.sent());
+            assertEquals("El usuario no tiene cadenas favoritas.", outcome.reason());
+            verifyNoInteractions(offerFeedClient, pushNotificationService);
+        }
+
+        @Test
+        @DisplayName("todo ya visto y un feed caído: no manda y distingue las dos cosas")
+        void nothingNew_andFeedDown_explains() {
+            User u = user(1L, true);
+            when(favoriteStoreChainRepository.findByUserId(1L))
+                    .thenReturn(List.of(favorite(u, "coto"), favorite(u, "jumbo")));
+            when(offerFeedClient.listOffers(List.of("coto"), 1, 50, null, List.of()))
+                    .thenReturn(feedOf(offer("catalog:coto:1", "Yerba", 15)));
+            when(offerFeedClient.listOffers(List.of("jumbo"), 1, 50, null, List.of()))
+                    .thenThrow(new IllegalStateException("caído"));
+            when(seenChainOfferRepository.findByChainSlugAndOfferIdIn(eq("coto"), any()))
+                    .thenReturn(List.of(SeenChainOffer.builder().chainSlug("coto").offerId("catalog:coto:1").build()));
+
+            PushJobOutcome outcome = service.runForUser(u);
+
+            assertFalse(outcome.sent());
+            assertTrue(outcome.reason().contains("no respondió para 1"), outcome.reason());
+            verifyNoInteractions(pushNotificationService);
+        }
+
+        @Test
+        @DisplayName("alertas apagadas: no consulta el feed")
+        void pushDisabled_explains() {
+            PushJobOutcome outcome = service.runForUser(user(1L, false));
+
+            assertFalse(outcome.sent());
+            verifyNoInteractions(offerFeedClient, pushNotificationService);
+        }
+    }
 }
