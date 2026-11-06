@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -98,6 +99,8 @@ public class TiendaHorariosService {
             "disco", new CadenaSepa("9", "2"),
             "jumbo", new CadenaSepa("9", "3"));
 
+    private static final Pattern ID_COTO = Pattern.compile("coto-(\\d+)");
+
     private final SepaSucursalRepository sucursalRepository;
 
     /**
@@ -118,7 +121,7 @@ public class TiendaHorariosService {
     }
 
     /** Una tienda del scraper que se puede ubicar y es de una cadena que está en SEPA. */
-    record Tienda(int indice, String cadena, double lat, double lng, String direccion) {
+    record Tienda(int indice, String cadena, double lat, double lng, String direccion, String sucursalId) {
     }
 
     private List<Map<String, Object>> enriquecer(List<Map<String, Object>> tiendas) {
@@ -134,20 +137,24 @@ public class TiendaHorariosService {
         }
 
         Map<CadenaSepa, List<SepaSucursal>> porCadena = sucursalesPorCadena(ubicables);
+        Map<String, SepaSucursal> cotoPorId = sucursalesCotoPorId(ubicables);
         Set<Integer> descartadas = coordenadasDeRelleno(ubicables);
         Map<Long, HorariosResponse> horariosPorSucursal = new HashMap<>();
 
         List<Map<String, Object>> out = new ArrayList<>(tiendas);
         for (Tienda t : ubicables) {
-            if (descartadas.contains(t.indice())) {
-                continue;
+            // El id dice qué sucursal es, así que vale aunque las coordenadas del
+            // scraper estén mal cargadas.
+            SepaSucursal s = t.sucursalId() == null ? null : cotoPorId.get(t.sucursalId());
+            if (s == null && !descartadas.contains(t.indice())) {
+                s = elegir(t.lat(), t.lng(), porCadena.getOrDefault(CADENAS.get(t.cadena()), List.of()));
             }
-            SepaSucursal s = elegir(t.lat(), t.lng(), porCadena.getOrDefault(CADENAS.get(t.cadena()), List.of()));
             if (s == null) {
                 continue;
             }
-            HorariosResponse horarios = horariosPorSucursal.computeIfAbsent(s.getId(),
-                    id -> HorariosJson.leer(s.getHorarios()));
+            SepaSucursal sucursal = s;
+            HorariosResponse horarios = horariosPorSucursal.computeIfAbsent(sucursal.getId(),
+                    id -> HorariosJson.leer(sucursal.getHorarios()));
             if (horarios != null) {
                 Map<String, Object> conHorario = new LinkedHashMap<>(tiendas.get(t.indice()));
                 conHorario.put("horarios", horarios);
@@ -168,7 +175,29 @@ public class TiendaHorariosService {
         }
         Object direccion = item.get("address");
         return new Tienda(indice, cadena, lat.doubleValue(), lng.doubleValue(),
-                direccion == null ? "" : direccion.toString());
+                direccion == null ? "" : direccion.toString(), sucursalIdDeCoto(cadena, item.get("externalId")));
+    }
+
+    /** El id de sucursal de SEPA que trae el {@code externalId} de COTO ("coto-82"),
+     * o null si la tienda es de otra cadena o el id no tiene esa forma. */
+    private static String sucursalIdDeCoto(String cadena, Object externalId) {
+        if (!"coto".equals(cadena) || externalId == null) {
+            return null;
+        }
+        Matcher m = ID_COTO.matcher(externalId.toString().trim());
+        return m.matches() ? m.group(1) : null;
+    }
+
+    private Map<String, SepaSucursal> sucursalesCotoPorId(List<Tienda> tiendas) {
+        Set<String> ids = tiendas.stream()
+                .map(Tienda::sucursalId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return sucursalRepository.findByComercioIdAndSucursalIdIn(CADENAS.get("coto").comercioId(), ids).stream()
+                .collect(Collectors.toMap(SepaSucursal::getSucursalId, s -> s, (a, b) -> a));
     }
 
     /**

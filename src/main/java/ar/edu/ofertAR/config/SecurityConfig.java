@@ -48,6 +48,7 @@ public class SecurityConfig {
                 .requestMatchers("/admin/**").hasRole("ADMIN")
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/sepa/**").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/legal/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/r/*").permitAll()
                 .anyRequest().authenticated()
             )
             .exceptionHandling(ex -> ex

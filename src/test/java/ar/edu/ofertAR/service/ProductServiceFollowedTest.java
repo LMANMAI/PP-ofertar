@@ -21,6 +21,8 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.springframework.test.util.ReflectionTestUtils;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -50,7 +52,8 @@ class ProductServiceFollowedTest {
         OfferMatchClient offerMatchClient = mock(OfferMatchClient.class);
         FavoriteStoreService favoriteStoreService = mock(FavoriteStoreService.class);
         followedProductRepository = mock(FollowedProductRepository.class);
-        productService = new ProductService(ticketRepository, offerMatchClient, favoriteStoreService, followedProductRepository);
+        productService = new ProductService(ticketRepository, offerMatchClient, favoriteStoreService, followedProductRepository, org.mockito.Mockito.mock(ar.edu.ofertAR.repository.HabitualProductRepository.class));
+        ReflectionTestUtils.setField(productService, "minTickets", 1);
 
         user = User.builder().id(7L).name("Alex").email("alex@test").password("x").build();
         when(favoriteStoreService.getFavoriteChainSlugs(any())).thenReturn(List.of());

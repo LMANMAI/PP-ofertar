@@ -16,6 +16,9 @@ public interface SepaSucursalRepository extends JpaRepository<SepaSucursal, Long
     List<SepaSucursal> findInBox(@Param("minLat") double minLat, @Param("maxLat") double maxLat,
                                  @Param("minLng") double minLng, @Param("maxLng") double maxLng);
 
+    /** Las sucursales de un comercio con esos ids de SEPA. */
+    List<SepaSucursal> findByComercioIdAndSucursalIdIn(String comercioId, Collection<String> sucursalIds);
+
     /** Como {@link #findInBox}, pero solo de algunos comercios: la caja de un mapa entero es grande. */
     @Query("select s from SepaSucursal s where s.latitud between :minLat and :maxLat "
             + "and s.longitud between :minLng and :maxLng and s.comercioId in :comercios")

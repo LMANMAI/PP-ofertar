@@ -158,7 +158,8 @@ class PaymentMethodServiceTest {
         assertEquals(List.of("banco-galicia", "mercado-pago"), c.issuers().stream().map(i -> i.slug()).toList());
         assertTrue(c.networks().stream().anyMatch(n -> n.slug().equals("visa")));
         assertTrue(c.cardTypes().stream().anyMatch(n -> n.slug().equals("credit")));
-        assertEquals(List.of("jubilado", "empleado_publico", "plan_sueldo", "club_la_nacion", "jumbo_mas", "mi_carrefour"),
+        assertEquals(List.of("jubilado", "empleado_publico", "plan_sueldo", "club_la_nacion", "jumbo_mas", "mi_carrefour",
+                        "comunidad_coto", "anses"),
                 c.benefits().stream().map(b -> b.slug()).toList());
     }
 }

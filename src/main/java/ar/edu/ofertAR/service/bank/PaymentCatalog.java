@@ -53,7 +53,11 @@ public final class PaymentCatalog {
             new Benefit("jumbo_mas", "Jumbo+",
                     "Sos parte del programa Jumbo+.", "Con Jumbo+"),
             new Benefit("mi_carrefour", "Mi Carrefour",
-                    "Estás adherido/a a Mi Carrefour.", "Con Mi Carrefour"));
+                    "Estás adherido/a a Mi Carrefour.", "Con Mi Carrefour"),
+            new Benefit("comunidad_coto", "Comunidad Coto",
+                    "Sos miembro de Comunidad Coto.", "Con Comunidad Coto"),
+            new Benefit("anses", "Beneficiario/a de ANSES",
+                    "Cobrás un beneficio de ANSES.", "Para beneficiarios de ANSES"));
 
     /** Las cadenas de bank_promotions.retailer con su nombre para mostrar. */
     private static final Map<String, String> RETAILERS = new LinkedHashMap<>();

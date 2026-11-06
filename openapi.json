@@ -1,6 +1,26 @@
 {
   "components" : {
     "schemas" : {
+      "AddHabitualProductRequest" : {
+        "properties" : {
+          "brand" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "description" : {
+            "maxLength" : 300,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "ean" : {
+            "minLength" : 1,
+            "pattern" : "\\d{8,14}",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "AlternativeOffer" : {
         "properties" : {
           "brand" : {
@@ -145,6 +165,18 @@
             "nullable" : true,
             "type" : "string"
           },
+          "brands" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "categories" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
           "discountPercentages" : {
             "items" : {
               "format" : "int32",
@@ -180,7 +212,7 @@
             "type" : "string"
           }
         },
-        "required" : [ "activeTo", "discountPercentages", "imageUrl", "legalText", "mechanic", "offerId", "percentagesUnverified", "province", "retailerName" ],
+        "required" : [ "activeTo", "brands", "categories", "discountPercentages", "imageUrl", "legalText", "mechanic", "offerId", "percentagesUnverified", "province", "retailerName" ],
         "type" : "object"
       },
       "CatalogBenefit" : {
@@ -1204,6 +1236,9 @@
       },
       "RecurringProductResponse" : {
         "properties" : {
+          "addedToHabitual" : {
+            "type" : "boolean"
+          },
           "alternativeOffers" : {
             "items" : {
               "$ref" : "#/components/schemas/AlternativeOffer"
@@ -1266,7 +1301,7 @@
             "type" : "number"
           }
         },
-        "required" : [ "alternativeOffers", "barcode", "bestOffer", "campaignOffers", "category", "description", "followed", "inReferenceTicket", "lastPaidAt", "lastPaidPrice", "promoMechanics", "purchaseCount", "ticketCount", "totalDiscounts" ],
+        "required" : [ "addedToHabitual", "alternativeOffers", "barcode", "bestOffer", "campaignOffers", "category", "description", "followed", "inReferenceTicket", "lastPaidAt", "lastPaidPrice", "promoMechanics", "purchaseCount", "ticketCount", "totalDiscounts" ],
         "type" : "object"
       },
       "RedeemRequest" : {
@@ -2587,6 +2622,67 @@
           }
         },
         "tags" : [ "followed-product-controller" ]
+      }
+    },
+    "/products/habitual" : {
+      "post" : {
+        "operationId" : "addHabitualProduct",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AddHabitualProductRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "habitual-product-controller" ]
+      }
+    },
+    "/products/habitual/eans" : {
+      "get" : {
+        "operationId" : "listHabitualProductEans",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "type" : "string"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "habitual-product-controller" ]
+      }
+    },
+    "/products/habitual/{ean}" : {
+      "delete" : {
+        "operationId" : "removeHabitualProduct",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "ean",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "habitual-product-controller" ]
       }
     },
     "/products/recurring" : {

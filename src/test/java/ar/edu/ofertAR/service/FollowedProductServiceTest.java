@@ -109,7 +109,7 @@ class FollowedProductServiceTest {
     static OfferMatch withCampaign() {
         return new OfferMatch("COCA COLA", null, null, null, null, null, null, null, List.of(), null, null,
                 List.of(), List.of(),
-                List.of(new CampaignOffer("abc", "Jumbo", null, null, null, null, List.of(30), "percentage_off", false)));
+                List.of(new CampaignOffer("abc", "Jumbo", null, null, null, null, List.of(30), "percentage_off", false, List.of("Coca Cola"), List.of("Gaseosas"))));
     }
 
     @Nested

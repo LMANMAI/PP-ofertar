@@ -167,10 +167,17 @@ public class OfferMatchClient {
                     (String) m.get("imageUrl"),
                     toIntList(m.get("bestGuessPercentages")),
                     (String) m.get("mechanic"),
-                    Boolean.TRUE.equals(m.get("percentagesUnverified"))
+                    Boolean.TRUE.equals(m.get("percentagesUnverified")),
+                    toStringList(m.get("brands")),
+                    toStringList(m.get("categories"))
             ));
         }
         return out;
+    }
+
+    private static List<String> toStringList(Object raw) {
+        if (!(raw instanceof List<?> list)) return List.of();
+        return list.stream().filter(String.class::isInstance).map(String.class::cast).toList();
     }
 
     /**
@@ -361,7 +368,10 @@ public class OfferMatchClient {
              * confirm it — the only case that actually warrants a hedge. When
              * the two sources disagree the metadata is right, so that is not a
              * reason to doubt the number. */
-            boolean percentagesUnverified
+            boolean percentagesUnverified,
+            /** Marcas y categorías de la campaña: dicen por qué aplica. */
+            List<String> brands,
+            List<String> categories
     ) {}
 
     public record OfferMatch(
