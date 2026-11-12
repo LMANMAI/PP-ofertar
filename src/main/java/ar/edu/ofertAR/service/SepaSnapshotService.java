@@ -2,11 +2,13 @@ package ar.edu.ofertAR.service;
 
 import ar.edu.ofertAR.dto.response.SepaSyncEstadoResponse;
 import ar.edu.ofertAR.dto.response.SepaSyncResponse;
+import ar.edu.ofertAR.service.horario.HorariosJson;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -66,7 +68,7 @@ public class SepaSnapshotService {
 
     private static final String INSERT_SUCURSAL = "INSERT INTO " + TABLA_SUC_STAGING
             + " (id, comercio_id, bandera_id, sucursal_id, bandera, nombre, tipo, direccion, "
-            + "localidad, provincia, latitud, longitud) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "localidad, provincia, latitud, longitud, horarios) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String INSERT_GRUPO = "INSERT INTO " + TABLA_GRUPO_STAGING
             + " (ean, comercio_id, precio, cantidad_sucursales, sucursales) VALUES (?, ?, ?, ?, ?)";
@@ -134,13 +136,57 @@ public class SepaSnapshotService {
 
     // ── API pública ──────────────────────────────────────────────────
 
-    /** Carga automática semanal (configurable con sepa.sync-cron). */
+    /**
+     * Carga automática (configurable con sepa.sync-cron). Se saltea cuando el
+     * dataset disponible ya es el que está cargado: con la carpeta vigilada
+     * (SEPA_RESOURCE_DIR) el cron corre cada hora para tomar el zip apenas lo
+     * deja el relay, y sin este chequeo reimportaría los mismos ~300 MB cada
+     * vez. El sync manual (/sepa/sync) no pasa por acá y siempre importa.
+     *
+     * <p>Con las demás fuentes (CKAN, SEPA_RESOURCE_FILE, SEPA_RESOURCE_URL) el
+     * cron importa siempre, como antes: no se agrega una consulta a CKAN antes
+     * de cada sync y un mismo archivo fijo se vuelve a cargar si cambió el código
+     * que lo procesa (p.ej. los horarios, que se completan en la próxima carga).
+     */
     @Scheduled(cron = "${sepa.sync-cron:0 0 3 * * MON}", zone = "America/Argentina/Buenos_Aires")
     public void scheduledSync() {
         try {
+            if (sepaService.usaCarpetaVigilada() && datasetYaCargado()) {
+                return;
+            }
             lanzarAsync(null);
         } catch (ResponseStatusException e) {
             log.warn("SEPA sync programado salteado: {}", e.getReason());
+        }
+    }
+
+    /**
+     * true si la fecha del dataset disponible no es posterior a la del que ya
+     * está cargado. Ante cualquier duda —fecha ilegible, tabla vacía o
+     * inexistente— devuelve false: importar de más es lento, pero no importar
+     * deja la app con precios viejos sin que nadie se entere.
+     */
+    boolean datasetYaCargado() {
+        LocalDate disponible;
+        try {
+            disponible = LocalDate.parse(sepaService.resolverRecurso(null).fecha());
+        } catch (DateTimeParseException e) {
+            return false;
+        }
+        LocalDate cargado = fechaCargada();
+        if (cargado != null && !disponible.isAfter(cargado)) {
+            log.info("SEPA: el dataset disponible ({}) ya está cargado (último: {}); nada que importar",
+                    disponible, cargado);
+            return true;
+        }
+        return false;
+    }
+
+    private LocalDate fechaCargada() {
+        try {
+            return jdbcTemplate.queryForObject("SELECT MAX(fecha_dataset) FROM " + TABLA, LocalDate.class);
+        } catch (DataAccessException e) {
+            return null;
         }
     }
 
@@ -324,7 +370,8 @@ public class SepaSnapshotService {
                         truncate(s.localidad(), 120),
                         truncate(s.provincia(), 20),
                         s.latitud(),
-                        s.longitud()
+                        s.longitud(),
+                        HorariosJson.escribir(s.horarios())
                 });
                 if (batch.size() == batchSize) {
                     insertarLote(INSERT_SUCURSAL, batch, sucursalesInsertadas);
