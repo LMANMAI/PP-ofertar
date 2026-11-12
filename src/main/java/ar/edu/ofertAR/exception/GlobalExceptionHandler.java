@@ -2,11 +2,13 @@ package ar.edu.ofertAR.exception;
 
 import ar.edu.ofertAR.dto.response.ApiErrorResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -89,6 +91,25 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Método equivocado sobre una ruta que existe, como abrir en el navegador
+     * un endpoint que es POST. Es un error de quien llama: igual que el 404, en
+     * el catch-all saldría como 500 y con el stack trace en el log.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiErrorResponse> handleMetodoNoPermitido(HttpRequestMethodNotSupportedException ex) {
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED);
+        if (ex.getSupportedHttpMethods() != null) {
+            response.allow(ex.getSupportedHttpMethods().toArray(HttpMethod[]::new));
+        }
+        return response.body(
+                ApiErrorResponse.builder()
+                        .status(405)
+                        .message("Método no permitido")
+                        .build()
+        );
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity.badRequest().body(
@@ -138,7 +159,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
     public ResponseEntity<ApiErrorResponse> handleResponseStatus(
             org.springframework.web.server.ResponseStatusException ex) {
-        return ResponseEntity.status(ex.getStatusCode()).body(
+        // Los headers de la excepción (p. ej. Retry-After en un 429) van en la respuesta.
+        return ResponseEntity.status(ex.getStatusCode()).headers(ex.getHeaders()).body(
                 ApiErrorResponse.builder()
                         .status(ex.getStatusCode().value())
                         .message(ex.getReason())

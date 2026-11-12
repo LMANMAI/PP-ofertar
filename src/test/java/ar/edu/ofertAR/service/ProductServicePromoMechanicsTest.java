@@ -17,6 +17,8 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.util.List;
 
+import org.springframework.test.util.ReflectionTestUtils;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -57,7 +59,8 @@ class ProductServicePromoMechanicsTest {
         offerMatchClient = mock(OfferMatchClient.class);
         favoriteStoreService = mock(FavoriteStoreService.class);
         productService = new ProductService(ticketRepository, offerMatchClient, favoriteStoreService,
-                mock(FollowedProductRepository.class));
+                mock(FollowedProductRepository.class), org.mockito.Mockito.mock(ar.edu.ofertAR.repository.HabitualProductRepository.class));
+        ReflectionTestUtils.setField(productService, "minTickets", 1);
 
         user = User.builder().id(7L).name("Alex").email("alex@test").password("x").build();
         when(favoriteStoreService.getFavoriteChainSlugs(any())).thenReturn(List.of());

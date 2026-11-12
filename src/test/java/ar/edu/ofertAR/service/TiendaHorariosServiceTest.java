@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -156,6 +157,39 @@ class TiendaHorariosServiceTest {
                 tienda("vea", LAT, "Vea Bulnes 1048 - Ciudad Autónoma de Buenos Aires")));
 
         r.forEach(t -> assertFalse(t.containsKey("horarios"), "" + t.get("address")));
+    }
+
+    @Test
+    @DisplayName("COTO se matchea por id de sucursal aunque las coordenadas del scraper estén lejos")
+    void cotoPorIdConCoordenadasMalas() {
+        SepaSucursal sucursal = SepaSucursal.builder().id(82L).comercioId("12").banderaId("1").sucursalId("82")
+                .latitud(alNorte(5000)).longitud(LNG).horarios(HorariosJson.escribir(COTO)).build();
+        when(sucursalRepository.findByComercioIdAndSucursalIdIn("12", Set.of("82"))).thenReturn(List.of(sucursal));
+        Map<String, Object> tienda = tienda("coto", LAT, "Murillo 551");
+        tienda.put("externalId", "coto-82");
+
+        assertEquals(COTO, service.conHorarios(List.of(tienda)).get(0).get("horarios"));
+    }
+
+    @Test
+    @DisplayName("si el id de COTO no está en SEPA, sigue valiendo la distancia")
+    void cotoSinIdEnSepaUsaDistancia() {
+        sepaTiene(suc(1, "12", "1", alNorte(10), COTO));
+        Map<String, Object> tienda = tienda("coto", LAT, "Murillo 551");
+        tienda.put("externalId", "coto-999");
+
+        assertEquals(COTO, service.conHorarios(List.of(tienda)).get(0).get("horarios"));
+    }
+
+    @Test
+    @DisplayName("el id con forma de COTO no se usa en otra cadena")
+    void idSoloParaCoto() {
+        Map<String, Object> tienda = tienda("dia", LAT, "x");
+        tienda.put("externalId", "coto-82");
+
+        service.conHorarios(List.of(tienda));
+
+        verify(sucursalRepository, times(0)).findByComercioIdAndSucursalIdIn(anyString(), anyCollection());
     }
 
     @Test

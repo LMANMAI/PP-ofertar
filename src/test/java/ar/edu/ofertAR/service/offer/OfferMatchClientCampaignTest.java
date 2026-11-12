@@ -49,6 +49,7 @@ class OfferMatchClientCampaignTest {
                 "imageUrl":"https://example.test/80marcas.jpg",
                 "bestGuessPercentages":[80],
                 "mechanic":"second_unit",
+                "brands":["Natura","Cocinero"],"categories":["Aceite"],
                 "percentagesUnverified":false}],
               "alternativeBrandOffers":[]
             }]}
@@ -89,6 +90,8 @@ class OfferMatchClientCampaignTest {
         assertEquals("2026-09-08T23:59:00", campaign.activeTo());
         assertEquals("https://example.test/80marcas.jpg", campaign.imageUrl());
         assertEquals(List.of(80), campaign.discountPercentages());
+        assertEquals(List.of("Natura", "Cocinero"), campaign.brands());
+        assertEquals(List.of("Aceite"), campaign.categories());
         assertEquals("second_unit", campaign.mechanic());
         assertFalse(campaign.percentagesUnverified());
     }

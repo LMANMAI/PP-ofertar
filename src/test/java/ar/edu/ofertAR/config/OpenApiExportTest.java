@@ -49,7 +49,10 @@ class OpenApiExportTest {
         assertNotNull(arbol.get("paths"), "springdoc no devolvió el contrato");
         ((ObjectNode) arbol).remove("servers"); // depende de dónde corra
         // Con ORDER_MAP_ENTRIES_BY_KEYS solo ordena Maps: pasar por Object para ordenar también los objetos JSON.
-        String generado = mapper.writeValueAsString(mapper.convertValue(arbol, Object.class)) + "\n";
+        // El pretty-printer usa el separador de línea del sistema (\r\n en Windows): se normaliza
+        // igual que el archivo leído, si no en Windows el test falla siempre.
+        String generado = mapper.writeValueAsString(mapper.convertValue(arbol, Object.class))
+                .replace("\r\n", "\n") + "\n";
 
         if (Boolean.getBoolean("openapi.update") || !Files.exists(ARCHIVO)) {
             Files.writeString(ARCHIVO, generado, StandardCharsets.UTF_8);

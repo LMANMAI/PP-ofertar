@@ -84,7 +84,7 @@ En desarrollo local activar el perfil `dev` (`SPRING_PROFILES_ACTIVE=dev`): mues
 en `/docs` y escribe en el log el código de recuperación de contraseña. Sin perfil la app corre con la
 configuración segura de producción.
 
-Los endpoints `/sepa/precios` y `/sepa/sync` requieren un usuario con rol `ADMIN`
+Los endpoints `/sepa/precios`, `/sepa/sync` y `/admin/**` requieren un usuario con rol `ADMIN`
 (`UPDATE users SET role = 'ADMIN' WHERE email = '...'`).
 
 ### Dataset SEPA (precios por sucursal)
@@ -155,6 +155,19 @@ La API quedara disponible en `http://localhost:8080`
 - Comparador de precios entre supermercados (carrito completo y productos individuales)
 - Trackeo de precios a lo largo del tiempo
 - Notificaciones push de descuentos y promociones
+
+### Notificaciones push
+Se mandan por Expo (`https://exp.host/--/api/v2/push/send`) con prioridad `high`, para que Android no las
+demore con el teléfono en reposo. Jobs diarios (hora Argentina): ofertas nuevas en las cadenas favoritas
+(`offers.alert-cron`, 5:00), productos seguidos en promo (`followed.alert-cron`, 5:20) y recordatorio a quien
+no escanea hace 14 días (`reactivation.cron`, 4:30). Los tres respetan `offersPushEnabled` del usuario.
+
+| Método | Ruta | Quién | Descripción |
+|---|---|---|---|
+| `POST` | `/push/register` | usuario | Registra el token de Expo del dispositivo |
+| `POST` | `/push/test` | usuario | Se manda a sí mismo una notificación de prueba. Cuerpo opcional `{ "type": "test" \| "followedProducts" \| "offers" \| "reactivation" }`: lleva el mismo `data` que el aviso real, así al tocarla abre la misma pantalla. No pasa por la deduplicación de los jobs. Devuelve el resultado de Expo por dispositivo. Una cada 10 s por usuario (429 con `Retry-After`); sin dispositivos responde 200 con `devices` vacío |
+| `GET` | `/push/status` | usuario | Dispositivos registrados (plataforma, últimos 6 caracteres del token, `lastSeenAt`) y preferencias de notificación |
+| `POST` | `/admin/push/jobs/{followed\|offers\|reactivation}?userId=` | ADMIN | Corre ahora la lógica del job para ese usuario y devuelve si mandó algo y por qué no. `offers` no marca las ofertas como vistas (esa marca es por cadena y le sacaría el aviso al resto) |
 
 ### Geolocalización
 - Sugerencia de supermercados cercanos con mejores precios

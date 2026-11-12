@@ -31,6 +31,12 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     @Query("SELECT t.user.id FROM Ticket t GROUP BY t.user.id HAVING MAX(t.createdAt) < :cutoff")
     List<Long> findUserIdsWithLastTicketBefore(@Param("cutoff") LocalDateTime cutoff);
 
+    /** Fecha del ticket más reciente del usuario (cualquier estado, como la
+     * consulta de arriba), o null si nunca escaneó. La usa la corrida manual
+     * del job de reactivación para un solo usuario. */
+    @Query("SELECT MAX(t.createdAt) FROM Ticket t WHERE t.user.id = :userId")
+    LocalDateTime findLastTicketCreatedAtByUserId(@Param("userId") Long userId);
+
     /** Por cada código de barras distinto en los ítems de los tickets del
      * usuario con ese estado, la fecha del ticket más reciente que lo trae. Una
      * sola query para toda la lista de productos seguidos (un usuario tiene a lo
