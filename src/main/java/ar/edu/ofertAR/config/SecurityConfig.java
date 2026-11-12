@@ -30,7 +30,17 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
+<<<<<<< HEAD
                 .requestMatchers("/auth/**").permitAll()
+=======
+                .requestMatchers("/auth/**", "/actuator/health", "/actuator/health/**", "/docs", "/docs/**", "/api-docs", "/api-docs/**", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
+                .requestMatchers("/sepa/precios", "/sepa/sync", "/sepa/sync/**").hasRole("ADMIN")
+                // Disparar jobs de notificaciones a mano (AdminPushController).
+                .requestMatchers("/admin/**").hasRole("ADMIN")
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/sepa/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/legal/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/r/*").permitAll()
+>>>>>>> dd2bb90 (Merge pull request #30 from LMANMAI/feature/promos-bancarias)
                 .anyRequest().authenticated()
             )
             .sessionManagement(session ->
