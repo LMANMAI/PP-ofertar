@@ -39,3 +39,30 @@ build/
 
 ### VS Code ###
 .vscode/
+<<<<<<< HEAD
+=======
+
+### Skills ###
+.agents
+skills-lock.json
+
+### Environment ###
+.env
+.env.local
+
+.codegraph
+
+### Eclipse bin ###
+bin/
+
+### Local tooling / docs (no versionar) ###
+.cursor/
+.gemini/
+AGENTS.md
+GEMINI.md
+opencode.jsonc
+doc/
+
+# Configuracion local del relay SEPA (host del VPS, ruta de la clave)
+tools/sepa-relay/sepa-relay.config.psd1
+>>>>>>> 4a1bfb9 (Merge pull request #29 from LMANMAI/feature/add-horarios)
