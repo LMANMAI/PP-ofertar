@@ -236,6 +236,9 @@ public class TicketProcessingService {
     static OcrResult printedTotals(List<OcrResult> pages) {
         return pages.stream()
                 .filter(p -> p.subtotal() != null && p.totalDiscounts() != null && p.total() != null)
+                // Una página sin total vuelve con los ceros de la plantilla del OCR, y
+                // 0 - 0 - 0 cierra: sin este filtro le ganaba a la suma de los ítems.
+                .filter(p -> p.total().signum() > 0)
                 .filter(p -> p.subtotal().subtract(p.totalDiscounts()).subtract(p.total()).abs()
                         .compareTo(TOTAL_CONSISTENCY_TOLERANCE) <= 0)
                 .max(Comparator.comparing(OcrResult::total))
@@ -305,7 +308,105 @@ public class TicketProcessingService {
                 }
             }
         }
+        Seam loose = findLooseSeam(collected, next);
+        return loose.length() > best.length() ? loose : best;
+    }
+
+    /** Lo mínimo que tiene que medir una unión tolerante: con menos líneas, el
+     * 80% de parecido puede ser casualidad. */
+    static final int MIN_LOOSE_SEAM = 3;
+    /** Qué parte de la unión tolerante tiene que coincidir línea a línea. */
+    static final double LOOSE_SEAM_SHARE = 0.8;
+    /** Qué tan parecidas tienen que ser dos descripciones para ser la misma línea.
+     * Dos toallas que sólo cambian de color quedan por debajo (0,83). */
+    static final double SIMILAR_DESCRIPTION = 0.85;
+
+    /**
+     * La unión cuando la estricta no encontró nada. El OCR transcribe distinto
+     * cada foto de un mismo ticket: en una pega el código a la descripción y en
+     * la otra lo deja aparte, lee "233" donde dice "213" o "LIR" donde dice "LTR".
+     * Con la comparación exacta no aparecía ninguna línea repetida y el ticket
+     * sumaba todo dos veces.
+     *
+     * Acepta un tramo de al menos {@link #MIN_LOOSE_SEAM} líneas en el que las
+     * dos puntas coinciden y el {@link #LOOSE_SEAM_SHARE} de las líneas se
+     * parecen, por EAN o por descripción.
+     */
+    static Seam findLooseSeam(List<OcrItem> collected, List<OcrItem> next) {
+        Seam best = new Seam(0, 0);
+        int maxSkip = Math.min(MAX_HEAD_SKIP, next.size());
+        for (int skip = 0; skip <= maxSkip; skip++) {
+            int max = Math.min(collected.size(), next.size() - skip);
+            for (int k = max; k >= MIN_LOOSE_SEAM; k--) {
+                if (k <= best.length()) break;
+                if (looselySame(collected.subList(collected.size() - k, collected.size()),
+                        next.subList(skip, skip + k))) {
+                    best = new Seam(skip, k);
+                    break;
+                }
+            }
+        }
         return best;
+    }
+
+    private static boolean looselySame(List<OcrItem> a, List<OcrItem> b) {
+        int k = a.size();
+        if (!similarLine(a.get(0), b.get(0)) || !similarLine(a.get(k - 1), b.get(k - 1))) {
+            return false;
+        }
+        int matches = 0;
+        for (int i = 0; i < k; i++) {
+            if (similarLine(a.get(i), b.get(i))) matches++;
+        }
+        return matches >= Math.ceil(k * LOOSE_SEAM_SHARE);
+    }
+
+    /** La misma línea leída en dos fotos: el mismo EAN, o casi la misma descripción. */
+    static boolean similarLine(OcrItem a, OcrItem b) {
+        String eanA = eanOf(a.code());
+        if (eanA != null && eanA.equals(eanOf(b.code()))) {
+            return true;
+        }
+        String da = bareDescription(a.description());
+        String db = bareDescription(b.description());
+        return !da.isEmpty() && !db.isEmpty() && similarity(da, db) >= SIMILAR_DESCRIPTION;
+    }
+
+    /** El EAN de lo que el OCR puso como código, que a veces trae delante el
+     * código interno de la cadena ("0000640498 02800004856980"). */
+    static String eanOf(String code) {
+        if (code == null || code.isBlank()) return null;
+        String[] parts = code.trim().split("\\s+");
+        String last = parts[parts.length - 1].replaceAll("\\D", "");
+        return last.length() >= 8 ? ProductKeys.eanKey(last) : null;
+    }
+
+    /** La descripción sin la cantidad delante ("2,000 POR 4292,99") ni los
+     * códigos pegados detrás, sólo letras y números. */
+    static String bareDescription(String description) {
+        if (description == null) return "";
+        String s = description.toUpperCase()
+                .replaceFirst("^\\s*\\d+[.,]\\d+\\s+(POR|X)\\s+\\d+(?:[.,]\\d+)?\\s+", "")
+                .replaceAll("\\b\\d{6,}\\b", "");
+        return s.replaceAll("[^\\p{L}\\p{N}]", "");
+    }
+
+    /** 1 si son iguales, 0 si no comparten nada (distancia de Levenshtein). */
+    static double similarity(String a, String b) {
+        int[] prev = new int[b.length() + 1];
+        int[] cur = new int[b.length() + 1];
+        for (int j = 0; j <= b.length(); j++) prev[j] = j;
+        for (int i = 1; i <= a.length(); i++) {
+            cur[0] = i;
+            for (int j = 1; j <= b.length(); j++) {
+                int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+                cur[j] = Math.min(Math.min(cur[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+            }
+            int[] t = prev;
+            prev = cur;
+            cur = t;
+        }
+        return 1.0 - (double) prev[b.length()] / Math.max(a.length(), b.length());
     }
 
     /**
@@ -354,7 +455,8 @@ public class TicketProcessingService {
         // description and price found none of the three seams; the barcode
         // found two of them and cut the item count from 68 to 46.
         if (hasText(a.code()) && hasText(b.code())) {
-            return a.code().equals(b.code());
+            String eanA = eanOf(a.code());
+            return eanA != null ? eanA.equals(eanOf(b.code())) : a.code().trim().equals(b.code().trim());
         }
         return normalise(a.description()).equals(normalise(b.description()))
                 && samePrice(a.price(), b.price());
