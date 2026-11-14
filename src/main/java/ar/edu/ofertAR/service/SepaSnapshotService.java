@@ -2,6 +2,7 @@ package ar.edu.ofertAR.service;
 
 import ar.edu.ofertAR.dto.response.SepaSyncEstadoResponse;
 import ar.edu.ofertAR.dto.response.SepaSyncResponse;
+import ar.edu.ofertAR.service.metricas.Metricas;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -163,8 +164,10 @@ public class SepaSnapshotService {
 
         executor.submit(() -> {
             String inicio = estado.get().inicio();
+            long inicioNanos = System.nanoTime();
             try {
                 SepaSyncResponse resultado = ejecutarSync(dia);
+                Metricas.tiempo("ofertar.sepa.sync", System.nanoTime() - inicioNanos, "outcome", "ok");
                 estado.set(SepaSyncEstadoResponse.builder()
                         .estado(SepaSyncEstadoResponse.Estado.OK)
                         .dia(resultado.dia())
@@ -178,6 +181,7 @@ public class SepaSnapshotService {
                         .build());
                 log.info("SEPA sync OK: {}", resultado);
             } catch (Exception e) {
+                Metricas.tiempo("ofertar.sepa.sync", System.nanoTime() - inicioNanos, "outcome", "error");
                 log.error("SEPA sync falló", e);
                 estado.set(SepaSyncEstadoResponse.builder()
                         .estado(SepaSyncEstadoResponse.Estado.ERROR)

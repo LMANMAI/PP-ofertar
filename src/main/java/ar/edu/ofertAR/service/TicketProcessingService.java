@@ -4,6 +4,7 @@ import ar.edu.ofertAR.model.Ticket;
 import ar.edu.ofertAR.model.TicketItem;
 import ar.edu.ofertAR.model.TicketStatus;
 import ar.edu.ofertAR.repository.TicketRepository;
+import ar.edu.ofertAR.service.metricas.Metricas;
 import ar.edu.ofertAR.service.ocr.OcrClient;
 import ar.edu.ofertAR.service.ocr.OcrClient.OcrItem;
 import ar.edu.ofertAR.service.ocr.OcrClient.OcrResult;
@@ -80,6 +81,7 @@ public class TicketProcessingService {
                     .ifPresent(ticket -> {
                         ticket.setStatus(TicketStatus.FAILED);
                         ticketRepository.save(ticket);
+                        Metricas.contar("ofertar.tickets.processed", "status", "failed");
                         pushNotificationService.notifyTicketFailed(ticket);
                     }));
         } catch (Exception e) {
@@ -150,6 +152,7 @@ public class TicketProcessingService {
                         ticket.getId(), existing.get().getId(), mergedTicketId);
                 ticket.setStatus(TicketStatus.FAILED);
                 ticketRepository.save(ticket);
+                Metricas.contar("ofertar.tickets.processed", "status", "duplicate");
                 pushNotificationService.notifyTicketFailed(ticket);
                 return;
             }
@@ -206,6 +209,8 @@ public class TicketProcessingService {
         log.info("Ticket {} procesado — {} items de {} paginas, super: {}",
                 ticket.getId(), allItems.size(), pageResults.size(), ticket.getStoreName());
 
+        Metricas.contar("ofertar.tickets.processed", "status",
+                ticket.getStatus() == TicketStatus.PROCESSED ? "processed" : "failed");
         if (ticket.getStatus() == TicketStatus.PROCESSED) {
             pointsService.onTicketProcessed(ticket);
             pushNotificationService.notifyTicketProcessed(ticket);
