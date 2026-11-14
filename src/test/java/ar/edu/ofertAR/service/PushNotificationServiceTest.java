@@ -12,9 +12,9 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.MediaType;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 
@@ -36,7 +36,13 @@ class PushNotificationServiceTest {
     @Mock private PushTokenRepository pushTokenRepository;
     @Mock private UserRepository userRepository;
     @Mock private TicketRepository ticketRepository;
-    @Mock(answer = Answers.RETURNS_DEEP_STUBS) private RestClient restClient;
+    /** Plano, y la cadena fluida armada a mano en {@link #stubExpoResponse}.
+     *  Con RETURNS_DEEP_STUBS los tres tests de envio pasaban a mentir: ver el
+     *  comentario del helper. */
+    @Mock private RestClient restClient;
+    @Mock private RestClient.RequestBodyUriSpec restClientUriSpec;
+    @Mock private RestClient.RequestBodySpec restClientBodySpec;
+    @Mock private RestClient.ResponseSpec restClientResponseSpec;
     @Mock private TransactionTemplate transactionTemplate;
 
     /** Runs submitted tasks synchronously, so tests don't need to wait on a
@@ -59,6 +65,45 @@ class PushNotificationServiceTest {
             invocation.getArgument(0, Consumer.class).accept(null);
             return null;
         }).when(transactionTemplate).executeWithoutResult(any());
+    }
+
+    /** El mismo endpoint que PushNotificationService.EXPO_PUSH_URL, que es
+     *  privado. Se stubea el string exacto y no anyString() para clavarlo: si
+     *  alguien apunta el servicio a otro host, la cadena deja de matchear y
+     *  estos tests se caen en vez de seguir en verde contra un destino que no
+     *  es Expo. */
+    private static final String EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+
+    /**
+     * Arma la cadena fluida del RestClient paso a paso y hace que Expo
+     * conteste {@code expoResponse}.
+     *
+     * <p>Antes era una sola expresion con deep stubs:
+     * {@code restClient.post().uri(any(String.class)).contentType(any()).body(any()).retrieve().body(Map.class)}.
+     * Compila, stubea sin chistar y no matchea nunca. Los deep stubs indexan
+     * cada mock hijo por la invocacion que lo produjo, y un matcher evalua a
+     * null al momento de stubear: el stub quedaba registrado contra
+     * {@code contentType(null)} mientras el servicio llama
+     * {@code contentType(APPLICATION_JSON)}, que devuelve otro hijo sin nada
+     * encima. Medido, cada paso devolvia otra instancia:
+     *
+     * <pre>
+     *   afterUri  = RequestBodySpec@1167916234
+     *   afterCt   = RequestBodySpec@238169801
+     *   afterBody = RequestBodySpec@1006398046
+     *   result    = null
+     * </pre>
+     *
+     * <p>Con la respuesta en null, handleTickets corta en su primer if y nunca
+     * borra el token muerto: dos tests rojos sobre codigo sano.
+     */
+    private void stubExpoResponse(Map<String, Object> expoResponse) {
+        when(restClient.post()).thenReturn(restClientUriSpec);
+        when(restClientUriSpec.uri(EXPO_PUSH_URL)).thenReturn(restClientBodySpec);
+        when(restClientBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(restClientBodySpec);
+        when(restClientBodySpec.body(any(Object.class))).thenReturn(restClientBodySpec);
+        when(restClientBodySpec.retrieve()).thenReturn(restClientResponseSpec);
+        when(restClientResponseSpec.body(Map.class)).thenReturn(expoResponse);
     }
 
     private static User user(Long id) {
@@ -123,16 +168,13 @@ class PushNotificationServiceTest {
             User u = user(1L);
             PushToken token = PushToken.builder().user(u).token("DEAD_TOKEN").platform("android").build();
             when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of(token));
-
-            Map<String, Object> expoResponse = Map.of(
+            stubExpoResponse(Map.of(
                     "data", List.of(Map.of(
                             "status", "error",
                             "message", "not registered",
                             "details", Map.of("error", "DeviceNotRegistered")
                     ))
-            );
-            when(restClient.post().uri(any(String.class), any(Object[].class)).contentType(any()).body(any(Object.class))
-                    .retrieve().body(Map.class)).thenReturn(expoResponse);
+            ));
 
             service.sendToUser(u, "Titulo", "Cuerpo", Map.of());
 
@@ -145,16 +187,201 @@ class PushNotificationServiceTest {
             User u = user(1L);
             PushToken token = PushToken.builder().user(u).token("GOOD_TOKEN").platform("android").build();
             when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of(token));
-
-            Map<String, Object> expoResponse = Map.of(
+            stubExpoResponse(Map.of(
                     "data", List.of(Map.of("status", "ok", "id", "receipt-1"))
-            );
-            when(restClient.post().uri(any(String.class), any(Object[].class)).contentType(any()).body(any(Object.class))
-                    .retrieve().body(Map.class)).thenReturn(expoResponse);
+            ));
 
             service.sendToUser(u, "Titulo", "Cuerpo", Map.of());
 
             verify(pushTokenRepository, never()).deleteByToken(any());
+        }
+
+        @Test
+        @DisplayName("lo que se postea a Expo lleva los tokens, el titulo y el cuerpo")
+        void postsExpectedPayload() {
+            // El que hace ruido si la cadena del RestClient se vuelve a desarmar.
+            // Los otros dos miran el efecto -que un token se borre o no-, y ese
+            // efecto es ambiguo: con la cadena rota la respuesta es null,
+            // handleTickets corta en el primer if y "no borro nada" se lee igual
+            // que "Expo contesto ok". Aca se afirma que la llamada ocurrio, con
+            // que cuerpo, y de paso queda documentado el payload de Expo.
+            User u = user(1L);
+            PushToken a = PushToken.builder().user(u).token("TOKEN_A").platform("android").build();
+            PushToken b = PushToken.builder().user(u).token("TOKEN_B").platform("ios").build();
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of(a, b));
+            stubExpoResponse(Map.of("data", List.of(
+                    Map.of("status", "ok", "id", "r-1"),
+                    Map.of("status", "ok", "id", "r-2"))));
+
+            service.sendToUser(u, "Titulo", "Cuerpo", Map.of("screen", "offers"));
+
+            ArgumentCaptor<Object> sent = ArgumentCaptor.forClass(Object.class);
+            verify(restClientBodySpec).body(sent.capture());
+
+            assertInstanceOf(List.class, sent.getValue());
+            List<?> messages = (List<?>) sent.getValue();
+            assertEquals(1, messages.size(), "Expo recibe un solo mensaje con todos los destinatarios");
+            assertInstanceOf(Map.class, messages.get(0));
+            Map<?, ?> message = (Map<?, ?>) messages.get(0);
+
+            // El orden importa: handleTickets casa el ticket i con el token i.
+            assertEquals(List.of("TOKEN_A", "TOKEN_B"), message.get("to"));
+            assertEquals("Titulo", message.get("title"));
+            assertEquals("Cuerpo", message.get("body"));
+            assertEquals(Map.of("screen", "offers"), message.get("data"));
+        }
+    }
+
+    @Nested
+    @DisplayName("payload y resultado por dispositivo")
+    class PayloadAndResults {
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private ArgumentCaptor<Object> stubExpo(Map<String, Object> expoResponse) {
+            ArgumentCaptor<Object> body = ArgumentCaptor.forClass(Object.class);
+            when(restClient.post()).thenReturn(restClientUriSpec);
+            when(restClientUriSpec.uri(EXPO_PUSH_URL)).thenReturn(restClientBodySpec);
+            when(restClientBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(restClientBodySpec);
+            when(restClientBodySpec.body(body.capture())).thenReturn(restClientBodySpec);
+            when(restClientBodySpec.retrieve()).thenReturn(restClientResponseSpec);
+            when(restClientResponseSpec.body(Map.class)).thenReturn(expoResponse);
+            return body;
+        }
+
+        @Test
+        @DisplayName("el mensaje que sale para Expo va con prioridad high y el data intacto")
+        @SuppressWarnings("unchecked")
+        void sentMessage_hasHighPriority() {
+            User u = user(1L);
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of(
+                    PushToken.builder().user(u).token("T1").platform("android").build()));
+            ArgumentCaptor<Object> body = stubExpo(Map.of("data", List.of(Map.of("status", "ok"))));
+
+            service.sendToUser(u, "Titulo", "Cuerpo", Map.of("screen", "offers"));
+
+            List<Map<String, Object>> messages = (List<Map<String, Object>>) body.getValue();
+            assertEquals(1, messages.size());
+            assertEquals("high", messages.get(0).get("priority"));
+            assertEquals(List.of("T1"), messages.get(0).get("to"));
+            assertEquals(Map.of("screen", "offers"), messages.get(0).get("data"));
+            assertFalse(messages.get(0).containsKey("channelId"), "la app no crea canales propios");
+        }
+
+        @Test
+        @DisplayName("sendToUserNow devuelve el ticket de cada dispositivo y sigue limpiando los tokens muertos")
+        void sendNow_returnsTicketsAndCleansDeadTokens() {
+            User u = user(1L);
+            PushToken good = PushToken.builder().user(u).token("GOOD").platform("android").build();
+            PushToken dead = PushToken.builder().user(u).token("DEAD").platform("ios").build();
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of(good, dead));
+            stubExpo(Map.of("data", List.of(
+                    Map.of("status", "ok", "id", "r1"),
+                    Map.of("status", "error", "message", "not registered",
+                            "details", Map.of("error", "DeviceNotRegistered")))));
+
+            List<PushNotificationService.DeliveryResult> results = service.sendToUserNow(u, "T", "B", Map.of());
+
+            assertEquals(2, results.size());
+            assertTrue(results.get(0).ok());
+            assertSame(good, results.get(0).device());
+            assertFalse(results.get(1).ok());
+            assertEquals("DeviceNotRegistered", results.get(1).error());
+            assertEquals("not registered", results.get(1).message());
+            verify(pushTokenRepository).deleteByToken("DEAD");
+            verify(pushTokenRepository, never()).deleteByToken("GOOD");
+        }
+
+        @Test
+        @DisplayName("sendToUserNow sin dispositivos: lista vacía, sin llamar a Expo")
+        void sendNow_noTokens() {
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of());
+
+            assertTrue(service.sendToUserNow(user(1L), "T", "B", Map.of()).isEmpty());
+            verifyNoInteractions(restClient);
+        }
+
+        @Test
+        @DisplayName("sendToUserNow con Expo caído: error por dispositivo, no excepción")
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        void sendNow_expoDown_isErrorPerDevice() {
+            User u = user(1L);
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of(
+                    PushToken.builder().user(u).token("T1").platform("android").build()));
+            stubExpoResponse(Map.of());
+            when(restClientResponseSpec.body(Map.class)).thenThrow(new IllegalStateException("timeout"));
+
+            List<PushNotificationService.DeliveryResult> results = service.sendToUserNow(u, "T", "B", Map.of());
+
+            assertEquals(1, results.size());
+            assertFalse(results.get(0).ok());
+            verify(pushTokenRepository, never()).deleteByToken(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("reactivacion para un solo usuario")
+    class ReactivationForUser {
+
+        @SuppressWarnings("unchecked")
+        private void makeExecuteRunItsCallback() {
+            when(transactionTemplate.execute(any())).thenAnswer(invocation ->
+                    invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class)
+                            .doInTransaction(null));
+        }
+
+        @Test
+        @DisplayName("nunca escaneó: no se le manda y se explica")
+        void neverScanned_isSkipped() {
+            when(ticketRepository.findLastTicketCreatedAtByUserId(1L)).thenReturn(null);
+
+            PushJobOutcome outcome = service.runReactivationForUser(1L);
+
+            assertFalse(outcome.sent());
+            assertTrue(outcome.reason().contains("nunca escaneó"), outcome.reason());
+            verifyNoInteractions(userRepository);
+        }
+
+        @Test
+        @DisplayName("escaneó hace poco: no está inactivo")
+        void recentScan_isSkipped() {
+            when(ticketRepository.findLastTicketCreatedAtByUserId(1L)).thenReturn(LocalDateTime.now().minusDays(2));
+
+            PushJobOutcome outcome = service.runReactivationForUser(1L);
+
+            assertFalse(outcome.sent());
+            verifyNoInteractions(userRepository);
+        }
+
+        @Test
+        @DisplayName("inactivo y fuera de cooldown: misma evaluación que el job, se manda y queda marcado")
+        void dormant_getsNudged() {
+            makeExecuteRunItsCallback();
+            User u = user(1L);
+            when(ticketRepository.findLastTicketCreatedAtByUserId(1L)).thenReturn(LocalDateTime.now().minusDays(20));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(u));
+            when(pushTokenRepository.findByUserId(1L)).thenReturn(List.of());
+
+            PushJobOutcome outcome = service.runReactivationForUser(1L);
+
+            assertTrue(outcome.sent());
+            assertNotNull(u.getLastReactivationNudgeAt());
+            verify(userRepository).save(u);
+        }
+
+        @Test
+        @DisplayName("inactivo pero dentro del cooldown: lo dice y no lo vuelve a marcar")
+        void dormant_inCooldown_isSkipped() {
+            makeExecuteRunItsCallback();
+            User u = user(1L);
+            u.setLastReactivationNudgeAt(LocalDateTime.now().minusDays(3));
+            when(ticketRepository.findLastTicketCreatedAtByUserId(1L)).thenReturn(LocalDateTime.now().minusDays(20));
+            when(userRepository.findById(1L)).thenReturn(Optional.of(u));
+
+            PushJobOutcome outcome = service.runReactivationForUser(1L);
+
+            assertFalse(outcome.sent());
+            assertTrue(outcome.reason().contains("menos de 30 días"), outcome.reason());
+            verify(userRepository, never()).save(any());
         }
     }
 

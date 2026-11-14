@@ -77,13 +77,7 @@ public class OfferAlertService {
             return Optional.empty();
         }
 
-        Set<String> currentIds = current.stream().map(OfferFeedResponse.Offer::getId).collect(Collectors.toSet());
-        Set<String> alreadySeen = seenChainOfferRepository.findByChainSlugAndOfferIdIn(chainSlug, currentIds)
-                .stream().map(SeenChainOffer::getOfferId).collect(Collectors.toSet());
-        List<OfferFeedResponse.Offer> newOffers = current.stream()
-                .filter(o -> !alreadySeen.contains(o.getId()))
-                .toList();
-
+        List<OfferFeedResponse.Offer> newOffers = unseen(chainSlug, current);
         if (newOffers.isEmpty()) {
             return Optional.empty();
         }
@@ -100,15 +94,84 @@ public class OfferAlertService {
         return newOffers.stream().max(Comparator.comparing(OfferAlertService::discountOrZero));
     }
 
+    /** Las ofertas de la cadena que todavía no figuran como vistas. Sólo lee. */
+    private List<OfferFeedResponse.Offer> unseen(String chainSlug, List<OfferFeedResponse.Offer> current) {
+        Set<String> currentIds = current.stream().map(OfferFeedResponse.Offer::getId).collect(Collectors.toSet());
+        Set<String> alreadySeen = seenChainOfferRepository.findByChainSlugAndOfferIdIn(chainSlug, currentIds)
+                .stream().map(SeenChainOffer::getOfferId).collect(Collectors.toSet());
+        return current.stream()
+                .filter(o -> !alreadySeen.contains(o.getId()))
+                .toList();
+    }
+
     private List<OfferFeedResponse.Offer> fetchChainOffers(String chainSlug) {
+        return tryFetchChainOffers(chainSlug).orElse(List.of());
+    }
+
+    /** Vacío si el feed no respondió (distinto de una cadena sin ofertas). */
+    private Optional<List<OfferFeedResponse.Offer>> tryFetchChainOffers(String chainSlug) {
         try {
-            return offerFeedClient
+            return Optional.of(offerFeedClient
                     .listOffers(List.of(chainSlug), 1, OFFERS_PER_CHAIN_CHECKED, null, List.of())
-                    .getItems();
+                    .getItems());
         } catch (Exception e) {
             log.warn("No se pudo traer el feed de {} para el job de alertas: {}", chainSlug, e.getMessage());
-            return List.of();
+            return Optional.empty();
         }
+    }
+
+    /**
+     * El job para un solo usuario, ahora (lo dispara un ADMIN desde
+     * {@code POST /admin/push/jobs/offers}): la mejor oferta nueva entre sus
+     * cadenas favoritas, con el mismo criterio que el job programado (no vista
+     * todavía, la de mayor descuento, un solo aviso).
+     *
+     * A diferencia del job programado, NO marca las ofertas como vistas: esa
+     * marca es por cadena, compartida por todos los que la siguen, y marcarla
+     * acá le sacaría el aviso de mañana al resto. La consecuencia es que este
+     * usuario puede volver a recibir la misma oferta en la corrida programada.
+     */
+    public PushJobOutcome runForUser(User user) {
+        if (!user.isOffersPushEnabled()) {
+            return PushJobOutcome.skipped("El usuario tiene apagadas las alertas de ofertas.");
+        }
+        List<String> chainSlugs = favoriteStoreChainRepository.findByUserId(user.getId()).stream()
+                .map(FavoriteStoreChain::getChainSlug)
+                .distinct()
+                .toList();
+        if (chainSlugs.isEmpty()) {
+            return PushJobOutcome.skipped("El usuario no tiene cadenas favoritas.");
+        }
+
+        OfferFeedResponse.Offer best = null;
+        int unavailable = 0;
+        for (String chainSlug : chainSlugs) {
+            Optional<List<OfferFeedResponse.Offer>> current = tryFetchChainOffers(chainSlug);
+            if (current.isEmpty()) {
+                unavailable++;
+                continue;
+            }
+            if (current.get().isEmpty()) {
+                continue;
+            }
+            for (OfferFeedResponse.Offer candidate : unseen(chainSlug, current.get())) {
+                if (best == null || discountOrZero(candidate).compareTo(discountOrZero(best)) > 0) {
+                    best = candidate;
+                }
+            }
+        }
+
+        if (best != null) {
+            pushNotificationService.notifyNewOffer(user, best);
+            return PushJobOutcome.sent("Se avisó de una oferta nueva en "
+                    + (best.getRetailerName() != null ? best.getRetailerName() : best.getRetailerSlug())
+                    + " (no se marcó como vista: la corrida programada puede volver a avisarla).");
+        }
+        String reason = "Sin ofertas nuevas (no vistas) en sus " + chainSlugs.size() + " cadenas favoritas.";
+        if (unavailable > 0) {
+            reason += " El feed de ofertas no respondió para " + unavailable + " de ellas.";
+        }
+        return PushJobOutcome.skipped(reason);
     }
 
     /** Caps at one push per user per run: a user following several chains

@@ -43,6 +43,8 @@ public final class OfferMatchMapper {
                         .discountPercentages(c.discountPercentages())
                         .mechanic(c.mechanic())
                         .percentagesUnverified(c.percentagesUnverified())
+                        .brands(c.brands())
+                        .categories(c.categories())
                         .build())
                 .toList();
     }

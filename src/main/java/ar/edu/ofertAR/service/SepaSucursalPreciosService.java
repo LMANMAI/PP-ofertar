@@ -5,6 +5,7 @@ import ar.edu.ofertAR.model.SepaPrecioGrupo;
 import ar.edu.ofertAR.model.SepaSucursal;
 import ar.edu.ofertAR.repository.SepaPrecioGrupoRepository;
 import ar.edu.ofertAR.repository.SepaSucursalRepository;
+import ar.edu.ofertAR.service.horario.HorariosJson;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -113,7 +114,8 @@ public class SepaSucursalPreciosService {
         return new SucursalPrecioResponse(
                 s.getComercioId(), s.getBanderaId(), s.getBandera(), s.getId(), s.getNombre(), s.getTipo(),
                 s.getDireccion(), s.getLocalidad(), s.getProvincia(), s.getLatitud(), s.getLongitud(),
-                Math.round(c.distanciaKm() * 10.0) / 10.0, grupo.getPrecio());
+                Math.round(c.distanciaKm() * 10.0) / 10.0, grupo.getPrecio(),
+                HorariosJson.leer(s.getHorarios()));
     }
 
     private static String claveCadena(SepaSucursal s) {

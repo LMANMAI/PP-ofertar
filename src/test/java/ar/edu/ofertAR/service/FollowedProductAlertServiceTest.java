@@ -206,4 +206,52 @@ class FollowedProductAlertServiceTest {
         verify(pushNotificationService).notifyFollowedProductsInPromo(eq(user), any());
         verify(pushNotificationService, never()).notifyFollowedProductsInPromo(eq(other), any());
     }
+    @Test
+    @DisplayName("corrida manual para un usuario: avisa y dice qué mandó")
+    void runForUser_sendsAndExplains() {
+        follows(product("Gaseosa", false, null));
+        offersAnswer(withMechanic());
+
+        PushJobOutcome outcome = service.runForUser(7L);
+
+        assertTrue(outcome.sent());
+        assertTrue(outcome.reason().contains("1 producto"), outcome.reason());
+        verify(pushNotificationService).notifyFollowedProductsInPromo(eq(user), any());
+    }
+
+    @Test
+    @DisplayName("corrida manual sin productos seguidos: no manda y explica por qué")
+    void runForUser_withoutFollowed_explains() {
+        when(repository.findByUserIdOrderByCreatedAtDescIdDesc(7L)).thenReturn(List.of());
+
+        PushJobOutcome outcome = service.runForUser(7L);
+
+        assertFalse(outcome.sent());
+        assertEquals("El usuario no sigue ningún producto.", outcome.reason());
+        verifyNoInteractions(pushNotificationService);
+    }
+
+    @Test
+    @DisplayName("corrida manual respeta el cooldown del job: lo dice en vez de reavisar")
+    void runForUser_inCooldown_explains() {
+        follows(product("Gaseosa", false, LocalDateTime.now().minusDays(2)));
+        offersAnswer(withMechanic());
+
+        PushJobOutcome outcome = service.runForUser(7L);
+
+        assertFalse(outcome.sent());
+        assertTrue(outcome.reason().contains("menos de 7 días"), outcome.reason());
+        verifyNoInteractions(pushNotificationService);
+    }
+
+    @Test
+    @DisplayName("corrida manual con las alertas apagadas: no consulta ofertas")
+    void runForUser_pushDisabled_explains() {
+        user.setOffersPushEnabled(false);
+
+        PushJobOutcome outcome = service.runForUser(7L);
+
+        assertFalse(outcome.sent());
+        verifyNoInteractions(followedProductService, pushNotificationService);
+    }
 }

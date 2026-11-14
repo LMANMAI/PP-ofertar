@@ -9,6 +9,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.YearMonth;
+import java.time.format.DateTimeParseException;
 
 @RestController
 @RequestMapping("/savings")
@@ -23,8 +24,17 @@ public class SavingsController {
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to
     ) {
-        YearMonth fromYm = from != null ? YearMonth.parse(from) : null;
-        YearMonth toYm = to != null ? YearMonth.parse(to) : null;
-        return ResponseEntity.ok(savingsService.getReport(user, fromYm, toYm));
+        return ResponseEntity.ok(savingsService.getReport(user, parseMonth(from), parseMonth(to)));
+    }
+
+    private static YearMonth parseMonth(String month) {
+        if (month == null) {
+            return null;
+        }
+        try {
+            return YearMonth.parse(month);
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException("Mes inválido: usá el formato AAAA-MM");
+        }
     }
 }

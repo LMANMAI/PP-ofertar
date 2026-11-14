@@ -18,6 +18,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -35,6 +36,25 @@ public class PushNotificationService {
 
     private static final String EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
+    /**
+     * Prioridad de entrega. En Android, con la prioridad normal (la que usa
+     * Expo si no se manda nada) FCM puede retener el mensaje mientras el
+     * teléfono está en reposo (Doze) y la notificación llega minutos tarde.
+     * En iOS "high" es la prioridad 10 de APNs, la de entrega inmediata.
+     *
+     * No se manda {@code channelId}: la app no crea canales de Android propios
+     * (no llama a {@code setNotificationChannelAsync}), así que el aviso va al
+     * canal por defecto que arma expo-notifications.
+     */
+    static final String EXPO_PRIORITY = "high";
+
+    /** A dónde lleva cada aviso al tocarlo (ver {@code useNotificationTaps.ts}
+     * en la app). Son los mismos para el aviso real y para su prueba desde
+     * {@code POST /push/test}, así la prueba abre la misma pantalla. */
+    public static final Map<String, String> DATA_FOLLOWED_PRODUCTS = Map.of("screen", "followedProducts");
+    public static final Map<String, String> DATA_OFFERS = Map.of("screen", "offers");
+    public static final Map<String, String> DATA_REACTIVATION = Map.of("screen", "scanMethod");
+
     private final PushTokenRepository pushTokenRepository;
     private final UserRepository userRepository;
     private final TicketRepository ticketRepository;
@@ -43,10 +63,19 @@ public class PushNotificationService {
     private final TransactionTemplate transactionTemplate;
 
     /** Nobody's scanned in this many days. */
-    private static final int REACTIVATION_DORMANT_DAYS = 14;
+    static final int REACTIVATION_DORMANT_DAYS = 14;
     /** Never nudge the same user twice inside this window, even if the job
      * runs daily and they're still dormant on every run. */
-    private static final int REACTIVATION_COOLDOWN_DAYS = 30;
+    static final int REACTIVATION_COOLDOWN_DAYS = 30;
+
+    /**
+     * Resultado de Expo para un dispositivo: el "ticket" que devuelve por cada
+     * destinatario. {@code ok} quiere decir que Expo lo aceptó para entregarlo,
+     * no que ya llegó al teléfono (eso lo dirían los receipts, que no se
+     * consultan). {@code error} es el código de Expo (p. ej.
+     * {@code DeviceNotRegistered}) cuando lo hay.
+     */
+    public record DeliveryResult(PushToken device, boolean ok, String message, String error) {}
 
     @Transactional
     public void registerToken(User user, RegisterPushTokenRequest request) {
@@ -70,9 +99,35 @@ public class PushNotificationService {
                 .build());
     }
 
+    /** Dispositivos registrados del usuario. */
+    public List<PushToken> devicesOf(Long userId) {
+        return pushTokenRepository.findByUserId(userId);
+    }
+
     /** Fire-and-forget: queues the send and returns immediately. */
     public void sendToUser(User user, String title, String body, Map<String, String> data) {
         pushNotificationExecutor.submit(() -> sendToUserBlocking(user, title, body, data));
+    }
+
+    /**
+     * Envía ahora, en el hilo de quien llama, y devuelve qué contestó Expo por
+     * cada dispositivo. Lo usa {@code POST /push/test}, que necesita mostrar el
+     * resultado. Igual que el envío en segundo plano, borra los tokens que Expo
+     * da por muertos. Lista vacía si el usuario no tiene dispositivos.
+     */
+    public List<DeliveryResult> sendToUserNow(User user, String title, String body, Map<String, String> data) {
+        List<PushToken> tokens = pushTokenRepository.findByUserId(user.getId());
+        if (tokens.isEmpty()) {
+            return List.of();
+        }
+        try {
+            return deliver(tokens, title, body, data);
+        } catch (Exception e) {
+            log.error("Fallo al enviar push a usuario {}: {}", user.getId(), e.getMessage(), e);
+            return tokens.stream()
+                    .map(t -> new DeliveryResult(t, false, "No se pudo contactar al servicio de notificaciones.", null))
+                    .toList();
+        }
     }
 
     public void notifyTicketProcessed(Ticket ticket) {
@@ -114,7 +169,7 @@ public class PushNotificationService {
         String body = offer.getProductName() != null
                 ? offer.getProductName() + ": " + offer.getHeadline()
                 : offer.getHeadline();
-        sendToUser(user, title, body, Map.of("screen", "offers"));
+        sendToUser(user, title, body, DATA_OFFERS);
     }
 
     /** A followed product that went on promotion, as the push names it. */
@@ -131,18 +186,17 @@ public class PushNotificationService {
         if (promos.isEmpty()) {
             return;
         }
-        Map<String, String> data = Map.of("screen", "followedProducts");
         if (promos.size() == 1) {
             FollowedPromo promo = promos.get(0);
             String where = promo.retailerName() != null && !promo.retailerName().isBlank()
                     ? " tiene una promo en " + promo.retailerName() + "."
                     : " tiene una promo.";
-            sendToUser(user, "Un producto que seguís está en promo", promo.description() + where, data);
+            sendToUser(user, "Un producto que seguís está en promo", promo.description() + where, DATA_FOLLOWED_PRODUCTS);
             return;
         }
         String others = promos.size() == 2 ? " y " + promos.get(1).description() : " y " + (promos.size() - 1) + " más";
         sendToUser(user, promos.size() + " productos que seguís están en promo",
-                promos.get(0).description() + others + ".", data);
+                promos.get(0).description() + others + ".", DATA_FOLLOWED_PRODUCTS);
     }
 
     // ── Reactivacion — job diario ────────────────────────────────────────
@@ -162,25 +216,50 @@ public class PushNotificationService {
         }
     }
 
+    /**
+     * El job de reactivación para un solo usuario, ahora (lo dispara un ADMIN
+     * desde {@code POST /admin/push/jobs/reactivation}). Primero se hace la
+     * misma pregunta que la consulta del job programado — que su último ticket
+     * sea anterior al corte de inactividad — y después corre exactamente la
+     * misma evaluación, con su cooldown y su marca.
+     */
+    public PushJobOutcome runReactivationForUser(Long userId) {
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(REACTIVATION_DORMANT_DAYS);
+        LocalDateTime lastTicket = ticketRepository.findLastTicketCreatedAtByUserId(userId);
+        if (lastTicket == null) {
+            return PushJobOutcome.skipped("El usuario nunca escaneó un ticket: el job sólo le escribe a quien dejó de escanear.");
+        }
+        if (!lastTicket.isBefore(cutoff)) {
+            return PushJobOutcome.skipped("Escaneó hace menos de " + REACTIVATION_DORMANT_DAYS
+                    + " días (último ticket: " + lastTicket.toLocalDate() + "): no está inactivo.");
+        }
+        return transactionTemplate.execute(status -> processReactivationCandidate(userId));
+    }
+
     /** Gated by offersPushEnabled — this is engagement, not a transactional
      * response to something the user did — and by its own cooldown so a
      * still-dormant user isn't nudged again on every run of the job. */
-    private void processReactivationCandidate(Long userId) {
+    private PushJobOutcome processReactivationCandidate(Long userId) {
         User user = userRepository.findById(userId).orElse(null);
-        if (user == null || !user.isOffersPushEnabled()) {
-            return;
+        if (user == null) {
+            return PushJobOutcome.skipped("El usuario no existe.");
+        }
+        if (!user.isOffersPushEnabled()) {
+            return PushJobOutcome.skipped("El usuario tiene apagadas las alertas de ofertas.");
         }
 
         LocalDateTime cooldownCutoff = LocalDateTime.now().minusDays(REACTIVATION_COOLDOWN_DAYS);
         if (user.getLastReactivationNudgeAt() != null && user.getLastReactivationNudgeAt().isAfter(cooldownCutoff)) {
-            return;
+            return PushJobOutcome.skipped("Ya se le mandó un recordatorio hace menos de " + REACTIVATION_COOLDOWN_DAYS
+                    + " días (" + user.getLastReactivationNudgeAt().toLocalDate() + ").");
         }
 
         sendToUser(user, "Te extrañamos",
                 "Escaneá tu próximo ticket y seguí ahorrando con OfertAR.",
-                Map.of("screen", "scanMethod"));
+                DATA_REACTIVATION);
         user.setLastReactivationNudgeAt(LocalDateTime.now());
         userRepository.save(user);
+        return PushJobOutcome.sent("Se mandó el recordatorio para volver a escanear.");
     }
 
     private void sendToUserBlocking(User user, String title, String body, Map<String, String> data) {
@@ -189,28 +268,39 @@ public class PushNotificationService {
             return;
         }
 
-        List<String> tokenValues = tokens.stream().map(PushToken::getToken).toList();
-        Map<String, Object> message = Map.of(
+        try {
+            deliver(tokens, title, body, data);
+        } catch (Exception e) {
+            log.error("Fallo al enviar push a usuario {}: {}", user.getId(), e.getMessage(), e);
+        }
+    }
+
+    /** El mensaje tal como se manda a Expo: uno solo, para todos los tokens. */
+    static Map<String, Object> expoMessage(List<String> tokenValues, String title, String body, Map<String, String> data) {
+        return Map.of(
                 "to", tokenValues,
                 "title", title,
                 "body", body,
                 "data", data == null ? Map.of() : data,
-                "sound", "default"
+                "sound", "default",
+                "priority", EXPO_PRIORITY
         );
+    }
 
-        try {
-            @SuppressWarnings("unchecked")
-            var response = (Map<String, Object>) restClient.post()
-                    .uri(EXPO_PUSH_URL)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(List.of(message))
-                    .retrieve()
-                    .body(Map.class);
+    /** Una llamada a Expo para todos los dispositivos. Las fallas de red se
+     * propagan: cada caller decide si las loguea o las devuelve. */
+    private List<DeliveryResult> deliver(List<PushToken> tokens, String title, String body, Map<String, String> data) {
+        List<String> tokenValues = tokens.stream().map(PushToken::getToken).toList();
 
-            handleTickets(tokenValues, response);
-        } catch (Exception e) {
-            log.error("Fallo al enviar push a usuario {}: {}", user.getId(), e.getMessage(), e);
-        }
+        @SuppressWarnings("unchecked")
+        var response = (Map<String, Object>) restClient.post()
+                .uri(EXPO_PUSH_URL)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(List.of(expoMessage(tokenValues, title, body, data)))
+                .retrieve()
+                .body(Map.class);
+
+        return handleTickets(tokens, response);
     }
 
     /**
@@ -218,36 +308,44 @@ public class PushNotificationService {
      * array we sent — a DeviceNotRegistered error means the app was
      * uninstalled or the token expired, so that row is dead weight from now
      * on and gets cleaned up instead of failing again on every future send.
+     *
+     * Devuelve el resultado de cada dispositivo, en el mismo orden. Un
+     * dispositivo sin ticket (respuesta vacía o más corta) cuenta como error.
      */
     @SuppressWarnings("unchecked")
-    private void handleTickets(List<String> tokenValues, Map<String, Object> response) {
-        if (response == null) {
-            return;
-        }
-        Object dataObj = response.get("data");
-        if (!(dataObj instanceof List<?> tickets)) {
-            return;
+    private List<DeliveryResult> handleTickets(List<PushToken> tokens, Map<String, Object> response) {
+        Object dataObj = response == null ? null : response.get("data");
+        List<?> tickets = dataObj instanceof List<?> list ? list : List.of();
+        if (tickets.isEmpty()) {
+            log.warn("Expo respondió sin tickets: {}", response);
         }
 
-        for (int i = 0; i < tickets.size() && i < tokenValues.size(); i++) {
-            if (!(tickets.get(i) instanceof Map<?, ?> ticket)) {
+        List<DeliveryResult> results = new ArrayList<>(tokens.size());
+        for (int i = 0; i < tokens.size(); i++) {
+            PushToken token = tokens.get(i);
+            if (i >= tickets.size() || !(tickets.get(i) instanceof Map<?, ?> ticket)) {
+                results.add(new DeliveryResult(token, false, "Expo no devolvió resultado para este dispositivo.", null));
                 continue;
             }
             if (!"error".equals(ticket.get("status"))) {
+                results.add(new DeliveryResult(token, true, null, null));
                 continue;
             }
 
             Object detailsObj = ticket.get("details");
-            String errorCode = detailsObj instanceof Map<?, ?> details
+            String errorCode = detailsObj instanceof Map<?, ?> details && details.get("error") != null
                     ? String.valueOf(((Map<String, Object>) details).get("error"))
                     : null;
+            String message = ticket.get("message") != null ? String.valueOf(ticket.get("message")) : null;
+            results.add(new DeliveryResult(token, false, message, errorCode));
 
             if ("DeviceNotRegistered".equals(errorCode)) {
-                pushTokenRepository.deleteByToken(tokenValues.get(i));
-                log.info("Token de push eliminado (DeviceNotRegistered): {}", tokenValues.get(i));
+                pushTokenRepository.deleteByToken(token.getToken());
+                log.info("Token de push eliminado (DeviceNotRegistered): {}", token.getToken());
             } else {
-                log.warn("Expo devolvio error al enviar push: {}", ticket.get("message"));
+                log.warn("Expo devolvio error al enviar push: {}", message);
             }
         }
+        return results;
     }
 }

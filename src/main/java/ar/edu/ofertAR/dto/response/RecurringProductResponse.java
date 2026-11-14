@@ -36,6 +36,10 @@ public class RecurringProductResponse {
      * el producto seguido y el del ticket son el mismo y no lo muestra dos
      * veces. Siempre false para un producto sin código de barras. */
     private boolean followed;
+    /** Si el usuario lo sumó a su compra habitual desde el escáner. Un producto
+     * sumado está en la compra habitual sin importar cuántos tickets lo traigan,
+     * incluso ninguno; lo detectado por los tickets lo marca {@link #ticketCount}. */
+    private boolean addedToHabitual;
     private BigDecimal totalDiscounts;
     /** Unit price the user actually paid the last time they bought it, so the
      * app can put a current offer against their own history instead of only
@@ -151,6 +155,9 @@ public class RecurringProductResponse {
         /** The percentage rests on OCR alone, with no campaign metadata to
          * confirm it. The app hedges only in that case. */
         private boolean percentagesUnverified;
+        /** Marcas y categorías de la campaña: dicen por qué aplica. */
+        private List<String> brands;
+        private List<String> categories;
     }
 
     /**

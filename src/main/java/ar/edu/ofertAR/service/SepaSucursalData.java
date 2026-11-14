@@ -1,5 +1,7 @@
 package ar.edu.ofertAR.service;
 
+import ar.edu.ofertAR.dto.response.HorariosResponse;
+
 /**
  * Una sucursal tal como la publica SEPA en {@code sucursales.csv}.
  *
@@ -10,6 +12,9 @@ package ar.edu.ofertAR.service;
  *
  * @param bandera nombre comercial de la bandera de esta sucursal ("Jumbo"),
  *                no el del comercio; null si comercio.csv no la lista
+ * @param horarios horario de atención ya normalizado; null si SEPA no lo informa o
+ *                 si el comercio entero declara 24 h de relleno (ver
+ *                 {@link ar.edu.ofertAR.service.horario.HorariosPlaceholder})
  */
 public record SepaSucursalData(
         String comercioId,
@@ -22,8 +27,15 @@ public record SepaSucursalData(
         String localidad,
         String provincia,
         double latitud,
-        double longitud
+        double longitud,
+        HorariosResponse horarios
 ) {
+    /** La misma sucursal con otro horario. */
+    public SepaSucursalData conHorarios(HorariosResponse otros) {
+        return new SepaSucursalData(comercioId, banderaId, sucursalId, bandera, nombre, tipo, direccion,
+                localidad, provincia, latitud, longitud, otros);
+    }
+
     /** Clave de la sucursal dentro de su comercio. */
     public String clave() {
         return claveDe(banderaId, sucursalId);

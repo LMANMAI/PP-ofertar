@@ -1,6 +1,7 @@
 package ar.edu.ofertAR.config;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.media.Schema;
 import org.springdoc.core.customizers.OpenApiCustomizer;
@@ -86,7 +87,13 @@ public class OpenApiConfig {
             try {
                 return c.getDeclaredField(nombre);
             } catch (NoSuchFieldException ignorar) {
-                // seguir con la superclase
+                // ¿Renombrado con @JsonProperty? (p. ej. "package", que no puede ser nombre de campo)
+                for (Field f : c.getDeclaredFields()) {
+                    JsonProperty json = f.getAnnotation(JsonProperty.class);
+                    if (json != null && nombre.equals(json.value())) {
+                        return f;
+                    }
+                }
             }
         }
         return null;
