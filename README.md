@@ -131,6 +131,13 @@ La API quedara disponible en `http://localhost:8080`
 ### Geolocalización
 - Sugerencia de supermercados cercanos con mejores precios
 
+### Métricas
+- Cada minuto se guarda en MySQL una foto de las métricas de Micrometer (`metric_samples`): tráfico y latencia de la API por endpoint, JVM, pool de conexiones, consultas por repositorio, llamadas a servicios externos (`ofertar.outbound.requests`), tickets procesados, sync de SEPA y rate limiting
+- La app reporta su telemetría anónima a `POST /telemetry/events` (pantallas, tiempos de la API vistos desde el teléfono, errores, arranque); queda como métricas `app.*` y los errores en `app_error_events`
+- El tablero ([PP-ofertar-dashboard](../PP-ofertar-dashboard)) las lee de `GET /telemetry/series`, `/telemetry/metrics`, `/telemetry/errors` y `/telemetry/status`. Son endpoints públicos y no figuran en `openapi.json`
+- Para sumar una métrica de negocio: `Metricas.contar("ofertar.algo", "tag", "valor")` o `Metricas.tiempo(...)` (`service/metricas/Metricas.java`); todo lo que empiece con `ofertar.` se guarda solo
+- Configuración: `METRICAS_ENABLED`, `METRICAS_RETENCION_DIAS` (14 por defecto), `METRICAS_CORS_ALLOWED_ORIGINS`
+
 ---
 
 ## Endpoints planeados (MVP)
