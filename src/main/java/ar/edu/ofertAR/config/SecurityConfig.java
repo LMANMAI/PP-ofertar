@@ -36,6 +36,13 @@ public class SecurityConfig {
     @org.springframework.beans.factory.annotation.Value("${cors.allowed-origins:}")
     private List<String> allowedOrigins;
 
+    /**
+     * Orígenes que pueden leer /telemetry/** desde un navegador (el tablero de métricas y la
+     * app en Expo web). Son endpoints públicos y sin credenciales, por eso el valor por defecto es "*".
+     */
+    @org.springframework.beans.factory.annotation.Value("${metricas.cors-allowed-origins:*}")
+    private List<String> metricasAllowedOrigins;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -49,6 +56,8 @@ public class SecurityConfig {
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/sepa/**").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/legal/**").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/r/*").permitAll()
+                // Telemetría de la app (llega también sin sesión) y lectura de métricas del tablero.
+                .requestMatchers("/telemetry/**").permitAll()
                 .anyRequest().authenticated()
             )
             .exceptionHandling(ex -> ex
@@ -89,7 +98,15 @@ public class SecurityConfig {
         config.setAllowedOrigins(allowedOrigins.stream().filter(o -> !o.isBlank()).toList());
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        CorsConfiguration metricas = new CorsConfiguration();
+        metricas.setAllowedOriginPatterns(metricasAllowedOrigins.stream().filter(o -> !o.isBlank()).toList());
+        metricas.setAllowedMethods(List.of("GET", "POST", "OPTIONS"));
+        metricas.setAllowedHeaders(List.of("Content-Type"));
+        metricas.setMaxAge(3600L);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        // Se resuelve por orden de registro: la regla específica va antes que la general.
+        source.registerCorsConfiguration("/telemetry/**", metricas);
         source.registerCorsConfiguration("/**", config);
         return source;
     }

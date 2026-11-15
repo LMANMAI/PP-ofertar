@@ -1,5 +1,6 @@
 package ar.edu.ofertAR.security;
 
+import ar.edu.ofertAR.service.metricas.Metricas;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,8 +15,8 @@ import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Tope de requests por IP en los endpoints que no exigen sesión: /auth/** (POST) y
- * GET /sepa/**. Ventana fija de un minuto, en memoria: alcanza para frenar un bucle
+ * Tope de requests por IP en los endpoints que no exigen sesión: /auth/** (POST),
+ * GET /sepa/** y /telemetry/**. Ventana fija de un minuto, en memoria: alcanza para frenar un bucle
  * de curl desde una máquina; con varias réplicas cada una cuenta por separado.
  *
  * <p>La IP es {@code getRemoteAddr()}: detrás del proxy, Tomcat la reemplaza por la del
@@ -39,6 +40,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Value("${rate-limit.sepa-por-minuto:120}")
     private int sepaPorMinuto;
 
+    /** Holgado: detrás de un NAT de operadora muchos teléfonos comparten IP. */
+    @Value("${rate-limit.telemetria-por-minuto:600}")
+    private int telemetriaPorMinuto = 600;
+
     private final ConcurrentHashMap<String, Ventana> ventanas = new ConcurrentHashMap<>();
 
     @Override
@@ -50,7 +55,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
             return;
         }
-        int limite = regla.equals("auth") ? authPorMinuto : sepaPorMinuto;
+        int limite = switch (regla) {
+            case "auth" -> authPorMinuto;
+            case "telemetria" -> telemetriaPorMinuto;
+            default -> sepaPorMinuto;
+        };
         String ip = request.getRemoteAddr();
         long ahora = System.currentTimeMillis();
 
@@ -63,6 +72,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             if (v.cuenta() == limite + 1) {
                 log.warn("RATE_LIMIT regla={} ip={} limite={}/min", regla, ip, limite);
             }
+            Metricas.contar("ofertar.ratelimit.rejected", "regla", regla);
             long reintentarEn = Math.max(1, (VENTANA_MS - (ahora - v.inicio()) + 999) / 1000);
             response.setStatus(429);
             response.setHeader("Retry-After", String.valueOf(reintentarEn));
@@ -85,6 +95,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
         if (path.startsWith("/sepa/") && "GET".equals(method)) {
             return "sepa";
+        }
+        if (path.startsWith("/telemetry/")) {
+            return "telemetria";
         }
         return null;
     }
