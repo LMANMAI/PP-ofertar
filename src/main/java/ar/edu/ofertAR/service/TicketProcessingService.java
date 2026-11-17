@@ -185,6 +185,20 @@ public class TicketProcessingService {
                 log.warn("Ticket {}: el total impreso ({}) y la suma de los items ({}) difieren en {}",
                         ticket.getId(), printed.total(), itemsTotal.subtract(itemsDiscounts), drift);
             }
+        } else if (printedTotalOnly(pageResults) != null) {
+            // La línea TOTAL se lee sola y es lo más confiable del ticket; lo que
+            // suele fallar es el ahorro o el subtotal de esa misma foto. Mejor el
+            // total impreso con los descuentos de los ítems que la suma de ítems,
+            // que se queda corta si a una foto le faltó algún renglón.
+            BigDecimal total = printedTotalOnly(pageResults);
+            ticket.setTotal(total);
+            ticket.setTotalDiscounts(itemsDiscounts);
+            ticket.setSubtotal(total.add(itemsDiscounts));
+            BigDecimal drift = total.subtract(itemsTotal.subtract(itemsDiscounts)).abs();
+            if (drift.compareTo(TOTAL_DRIFT_WARN) > 0) {
+                log.warn("Ticket {}: se usa el total impreso ({}) sin subtotal coherente; los items suman {} (diferencia {})",
+                        ticket.getId(), total, itemsTotal.subtract(itemsDiscounts), drift);
+            }
         } else {
             // itemsTotal is the sum of the printed line prices, i.e. the gross
             // the receipt calls its subtotal; the discounts below it are what
@@ -247,6 +261,16 @@ public class TicketProcessingService {
                 .filter(p -> p.subtotal().subtract(p.totalDiscounts()).subtract(p.total()).abs()
                         .compareTo(TOTAL_CONSISTENCY_TOLERANCE) <= 0)
                 .max(Comparator.comparing(OcrResult::total))
+                .orElse(null);
+    }
+
+    /** El mayor TOTAL impreso que reportó alguna foto, aunque su subtotal y su
+     * ahorro no cierren; null si ninguna foto mostró la línea TOTAL. */
+    static BigDecimal printedTotalOnly(List<OcrResult> pages) {
+        return pages.stream()
+                .map(OcrResult::total)
+                .filter(t -> t != null && t.signum() > 0)
+                .max(Comparator.naturalOrder())
                 .orElse(null);
     }
 
@@ -484,20 +508,40 @@ public class TicketProcessingService {
         return a.compareTo(b) == 0;
     }
 
+    /**
+     * El importe bruto de la línea, antes de su descuento: lo que el resto del
+     * backend guarda como subtotal y a lo que después le resta los descuentos
+     * (TicketService.updateTicket hace lo mismo al confirmar).
+     *
+     * El OCR devuelve en "price" lo que se pagó (neto) y en "original_price" el
+     * importe impreso de la línea (bruto). Antes se guardaba "price" como
+     * subtotal y el descuento de cada línea se restaba dos veces.
+     */
+    static BigDecimal grossLine(OcrItem item) {
+        BigDecimal price = item.price() != null ? item.price() : BigDecimal.ZERO;
+        BigDecimal original = item.originalPrice();
+        if (original != null && original.signum() > 0 && original.compareTo(price) >= 0) {
+            return original;
+        }
+        BigDecimal discount = item.discountAmount() != null ? item.discountAmount().abs() : BigDecimal.ZERO;
+        return price.add(discount);
+    }
+
     private TicketItem toItem(Ticket ticket, OcrItem ocrItem) {
         // OcrClient already floors this at one, but the divide below is
         // unforgiving and a zero here would take down the whole ticket.
         BigDecimal qty = ocrItem.quantity() != null && ocrItem.quantity().signum() > 0
                 ? ocrItem.quantity()
                 : BigDecimal.ONE;
+        BigDecimal gross = grossLine(ocrItem);
         return TicketItem.builder()
                 .ticket(ticket)
                 .description(ocrItem.description())
                 .rawDescription(ocrItem.rawDescription())
                 .quantity(qty)
-                .unitPrice(ocrItem.price().divide(qty, 2, RoundingMode.HALF_UP))
+                .unitPrice(gross.divide(qty, 2, RoundingMode.HALF_UP))
                 .originalPrice(ocrItem.originalPrice())
-                .subtotal(ocrItem.price())
+                .subtotal(gross)
                 .barcode(ocrItem.code())
                 .category(ocrItem.category())
                 .discountAmount(ocrItem.discountAmount())
